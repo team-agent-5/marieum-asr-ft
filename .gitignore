@@ -1,0 +1,27 @@
+# AI Hub 구음장애 데이터(608)는 재배포 금지. 음성·라벨·전사가 들어간 파일은 올리지 않는다
+*.wav
+*.flac
+*.mp3
+*.zip
+*.json
+!configs/**/*.json
+work/
+data/
+manifests/
+
+# 체크포인트·모델
+*.nemo
+*.ckpt
+*.pt
+*.onnx
+*.safetensors
+runs/
+models/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+.ipynb_checkpoints/

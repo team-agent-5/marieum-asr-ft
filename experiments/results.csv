@@ -1,0 +1,1 @@
+exp_id,date,git_sha,model,config,data_version,cer_all,cer_easy,cer_hard,cer_unseen_text,interim_flip_rate,latency_p95_ms,notes
