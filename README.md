@@ -10,7 +10,7 @@
 
 - 원본: AI Hub 구음장애 음성인식 데이터(608), 외장하드 `E:\Dataset_Backup\구음장애_음성인식_데이터`
 - **재배포 금지다.** 음성, 라벨 JSON, 전사 문장, 전사가 들어간 manifest는 git에 넣지 않는다 (`.gitignore`). 레포에는 코드, 설정, 화자 ID 목록, 숫자로 된 결과만 둔다
-- 데이터는 외장하드, 이 PC, GPU 서버에만 둔다. Colab(Google Drive)에 올려도 되는지는 아직 확인하지 않았다
+- 데이터는 외장하드, 이 PC, GPU 서버, 팀 Google Drive(Colab 학습용)에만 둔다 (Drive 업로드는 2026-11-13 확인)
 - 로그와 출력에 전사 문장을 찍지 않는다. 필요하면 글자 수나 CER만 찍는다
 
 ## 구조
@@ -20,6 +20,7 @@
 | `data_prep/` | `inventory.py` 라벨만 읽어 파일·화자 목록 (`work/inventory/`) |
 | `splits/` | 화자 분할. `test_v1.csv`는 직접 들어 점수를 매긴 22명 (고정, 바꾸지 않는다) |
 | `experiments/` | `results.csv` 실험 하나에 한 줄 |
+| `docs/` | 조사 기록. [`nemotron_finetune_cases.md`](docs/nemotron_finetune_cases.md) Nemotron 3.5 파인튜닝 사례와 우리 설정에 반영할 점 |
 | `work/` | 중간 산출물 (git 밖) |
 
 학습(`train/`), 평가(`eval/`), 설정(`configs/`), 환경(`envs/`)은 필요해질 때 만든다.
