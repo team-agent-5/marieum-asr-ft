@@ -39,7 +39,7 @@
 | 날짜 | 할 일 | 담당 |
 |---|---|---|
 | **11-14 (토)** | 어려운 14명 결정 → `train_v1` / `val_v1` / `test_v2` 분할 (완료) | 사용자 결정, Claude 작성 |
-| 11-14 ~ 15 | 테스트 화자 음성 추출 (16kHz FLAC). 평가 스크립트 작성 (CER, 글자 뒤집힘, 지어낸 글자, 반복 루프, 지연) | Claude |
+| 11-14 ~ 15 | 테스트 화자 음성 추출 (16kHz FLAC, 30명 380분, 완료). 평가 스크립트 (`eval/score.py`, 완료). Colab 스크립트와 실행 순서 (`docs/colab_runbook.md`, 완료) | Claude |
 | 11-15 | Colab 첫 시험: CPU VM으로 `new` → `upload` → `exec` → `stop`이 Windows에서 되는지 확인 | agy |
 | 11-15 ~ 16 | **제로샷 비교:** yoona-J, Nemotron, Zipformer를 같은 22명에 돌린다. 테스트 음성은 로컬에서 바로 올린다 (Drive 불필요) | agy 실행, Claude 스크립트 |
 | **11-16 (월)** | 팀 회의: 제로샷 결과, 채점 결과, 이 일정 공유. GPU 서버 확인 | 사용자, 팀장 |
