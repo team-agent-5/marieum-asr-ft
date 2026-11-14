@@ -20,14 +20,15 @@ import sys
 import time
 from pathlib import Path
 
-MODEL = "nvidia/nemotron-3.5-asr-streaming-0.6b"
+# 파인튜닝한 모델을 평가할 때: MODEL=/content/drive/.../checkpoints/xxx.nemo  OUT_NAME=ft_v1_320ms
+MODEL = os.environ.get("MODEL", "nvidia/nemotron-3.5-asr-streaming-0.6b")
 ATT_CONTEXT = os.environ.get("ATT_CONTEXT", "[56,3]")  # 320ms. [56,0]=80ms, [56,13]=1.12s
 BATCH = 4
 UPLOAD = Path("/content/upload")
 DATA = Path("/content/test_v2")
 NEMO = Path("/content/NeMo")
 TAG = {"[56,0]": "80ms", "[56,1]": "160ms", "[56,3]": "320ms", "[56,6]": "560ms", "[56,13]": "1120ms"}
-OUT = Path(f"/content/out/nemotron_zs_{TAG.get(ATT_CONTEXT, 'ctx')}")
+OUT = Path("/content/out") / os.environ.get("OUT_NAME", f"nemotron_zs_{TAG.get(ATT_CONTEXT, 'ctx')}")
 
 
 def sh(cmd, log=None, **kw):
@@ -88,7 +89,8 @@ def main():
     script = NEMO / "examples/asr/asr_cache_aware_streaming/speech_to_text_cache_aware_streaming_infer.py"
     t1 = time.time()
     sh([sys.executable, str(script),
-        f"pretrained_name={MODEL}", f"dataset_manifest={man}", f"output_path={OUT}",
+        f"model_path={MODEL}" if MODEL.endswith(".nemo") else f"pretrained_name={MODEL}",
+        f"dataset_manifest={man}", f"output_path={OUT}",
         f"att_context_size={ATT_CONTEXT}", f"batch_size={BATCH}", "decoder_type=rnnt",
         "pad_and_drop_preencoded=true", "target_lang=ko-KR", "strip_lang_tags=true",
         "amp=true", "amp_dtype=bfloat16", "cuda=0"], log=log)

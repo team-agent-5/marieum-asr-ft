@@ -175,3 +175,75 @@ python data_prep/align_segments.py --segs work/segments/vm
 ```
 
 출력: `~/marieum-private/segments_train.jsonl`, `segments_val.jsonl` (학습 manifest, 레포 밖), `work/segments/align_stats.csv` (화자별 숫자).
+
+---
+
+# 파인튜닝 (Nemotron 3.5 Streaming 0.6B)
+
+**모든 colab 명령 앞에 `MSYS_NO_PATHCONV=1`을 붙인다.** 긴 실행은 커널이 끝까지 기다리게 한다 (nohup 금지).
+
+## 0. 학습 manifest 만들기 (이 PC, 문장 나누기 F단계 다음)
+
+```bash
+python data_prep/build_train_manifests.py
+```
+
+- 출력: `~/marieum-private/manifests/train_v1.jsonl`, `val_v1.jsonl` (전사 포함, 레포 밖)
+- 화자당 상한 20분 (기준점 10분), 반복 중증 3·중등도 2·경증 1·기준점 2. 묶음별 시간과 비율이 출력된다
+- **사용자가 두 파일을 브라우저로 Drive `marieum-asr-ft/data/manifests/`에 올린다**
+
+## 1. VM과 Drive (사용자)
+
+```bash
+colab --auth=oauth2 new -s train --gpu A100
+colab --auth=oauth2 drivemount -s train
+```
+
+- 본 학습은 A100(또는 H100)을 쓴다. L4 24GB는 메모리가 빠듯하다 (`docs/nemotron_finetune_cases.md`). 시험 학습은 L4도 된다
+- **Drive 여유 공간:** 체크포인트(.ckpt, 이어하기용)는 개당 약 7GB, .nemo는 약 2.4GB다. 최소 20GB 여유가 필요하다
+
+## 2. 시험 학습 (MAX_STEPS=1000)
+
+```bash
+colab --auth=oauth2 upload -s train colab/train_nemotron.py /content/train_nemotron.py
+echo 'import subprocess, os; os.environ.update(MAX_STEPS="1000", RUN_NAME="pilot_v1"); p=subprocess.run("python /content/train_nemotron.py", shell=True); print("exit", p.returncode)' | colab --auth=oauth2 exec -s train
+```
+
+- 처음 10~20분은 압축 풀기·NeMo 설치·모델 내려받기다
+- CLI가 `TimeoutError`로 끝나도 다시 보내지 않는다. VM 안 학습은 계속된다
+
+## 3. 진행 확인 (커널을 쓰지 않는 명령만, 30분마다)
+
+```bash
+colab --auth=oauth2 status -s train
+colab --auth=oauth2 download -s train /content/drive/MyDrive/marieum-asr-ft/runs/train/pilot_v1.log work/train_pilot_v1.log && tail -5 work/train_pilot_v1.log
+colab --auth=oauth2 ls -s train /content/drive/MyDrive/marieum-asr-ft/ckpt/pilot_v1/v1/checkpoints
+```
+
+- 로그 끝에 step 숫자, `train_loss`, 검증 때 `val_wer`가 보인다. 메모리 부족(`CUDA out of memory`)이면 멈추고 보고한다
+  → 다시 할 때 `BATCH_DURATION`을 줄인다 (예: `os.environ.update(BATCH_DURATION="30")`)
+- `status`가 IDLE이 되면 끝난 것이다. `.nemo`가 생겼는지 `ls`로 본다
+
+## 4. 평가 (같은 VM)
+
+test_v2 묶음을 올리고(제로샷 3단계와 같다), 파인튜닝 모델로 추론한다.
+
+```bash
+echo 'import os; os.makedirs("/content/upload", exist_ok=True); print("ok")' | colab --auth=oauth2 exec -s train
+for f in work/upload/test_v2.tar.part-*; do colab --auth=oauth2 upload -s train "$f" "/content/upload/$(basename "$f")" || break; done
+colab --auth=oauth2 upload -s train colab/zeroshot_nemotron.py /content/zeroshot_nemotron.py
+echo 'import subprocess, os, glob; m=sorted(glob.glob("/content/drive/MyDrive/marieum-asr-ft/ckpt/pilot_v1/v1/checkpoints/*.nemo"))[-1]; os.environ.update(MODEL=m, OUT_NAME="pilot_v1_320ms"); p=subprocess.run("python /content/zeroshot_nemotron.py", shell=True); print("exit", p.returncode, m)' | colab --auth=oauth2 exec -s train
+mkdir -p work/eval/pilot_v1_320ms
+colab --auth=oauth2 download -s train /content/out/pilot_v1_320ms/hyps.jsonl work/eval/pilot_v1_320ms/hyps.jsonl
+colab --auth=oauth2 download -s train /content/out/pilot_v1_320ms/run_info.json work/eval/pilot_v1_320ms/run_info.json
+colab --auth=oauth2 stop -s train
+colab --auth=oauth2 sessions
+```
+
+## 5. 채점 (이 PC)
+
+```bash
+python eval/score.py --hyps work/eval/pilot_v1_320ms/hyps.jsonl --out work/eval/pilot_v1_320ms
+```
+
+제로샷(EXP-001)과 비교한다. 중증 CER이 내려가고 경증이 크게 나빠지지 않으면 본 학습(MAX_STEPS 6000, RUN_NAME ft_v1)으로 간다.
