@@ -246,4 +246,4 @@ colab --auth=oauth2 sessions
 python eval/score.py --hyps work/eval/pilot_v1_320ms/hyps.jsonl --out work/eval/pilot_v1_320ms
 ```
 
-제로샷(EXP-001)과 비교한다. 중증 CER이 내려가고 경증이 크게 나빠지지 않으면 본 학습(MAX_STEPS 6000, RUN_NAME ft_v1)으로 간다.
+제로샷(EXP-001)과 비교한다. 중증 CER이 내려가고 경증이 크게 나빠지지 않으면 본 학습(MAX_STEPS 3000, RUN_NAME ft_v1)으로 간다.

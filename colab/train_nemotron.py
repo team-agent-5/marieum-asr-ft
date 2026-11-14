@@ -4,7 +4,7 @@
     echo 'import subprocess; p=subprocess.run("python /content/train_nemotron.py", shell=True); print("exit", p.returncode)' | colab --auth=oauth2 exec -s train
 
 - 커널이 끝까지 기다리게 실행한다 (백그라운드로 띄우면 커널이 쉬어서 VM이 회수된다, 11-15)
-- 설정은 환경변수로 바꾼다. 시험 학습: MAX_STEPS=1000, 본 학습: MAX_STEPS=6000 (기본)
+- 설정은 환경변수로 바꾼다. 시험 학습: MAX_STEPS=1000, 본 학습: MAX_STEPS=3000 (기본). 중증은 3번 반복이라 더 길게 돌리면 외울 위험이 크다
 - 체크포인트는 Drive에 저장하고, 같은 RUN_NAME으로 다시 돌리면 마지막 체크포인트에서 이어서 한다
 - 근거: docs/nemotron_finetune_cases.md (인코더 전체 학습, bf16-mixed, 작은 학습률, 고정 step, target_lang)
 
@@ -28,7 +28,7 @@ AUDIO = Path("/content/train_audio")
 NEMO = Path("/content/NeMo")
 BASE = os.environ.get("BASE_MODEL", "nvidia/nemotron-3.5-asr-streaming-0.6b")
 RUN = os.environ.get("RUN_NAME", "ft_v1")
-MAX_STEPS = int(os.environ.get("MAX_STEPS", "6000"))
+MAX_STEPS = int(os.environ.get("MAX_STEPS", "3000"))  # 48h·400s 배치면 한 바퀴 약 430 step, 약 7바퀴
 EVAL_EVERY = int(os.environ.get("EVAL_EVERY", "500"))
 LR = float(os.environ.get("LR", "3e-5"))
 WARMUP = int(os.environ.get("WARMUP", "200"))
