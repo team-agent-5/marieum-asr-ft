@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>발화 난이도 채점</title>
+<style>
+:root {
+  --bg: #f7f7f5; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6b66; --line: #e2e1dc;
+  --accent: #2f5fd0; --accent-ink: #ffffff; --cur: #eef3ff; --done: #e9f5ec; --warn: #b4232c;
+  --s0: #2e7d32; --s1: #558b2f; --s2: #9e9d24; --s3: #ef6c00; --s4: #d84315; --s5: #b71c1c;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #161615; --panel: #1f1f1d; --ink: #ecebe6; --muted: #9a9993; --line: #34332f;
+    --accent: #7aa2ff; --accent-ink: #0d1530; --cur: #1f2a44; --done: #1b2e21; --warn: #ff6b6b;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #161615; --panel: #1f1f1d; --ink: #ecebe6; --muted: #9a9993; --line: #34332f;
+  --accent: #7aa2ff; --accent-ink: #0d1530; --cur: #1f2a44; --done: #1b2e21; --warn: #ff6b6b;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 system-ui, "Malgun Gothic", sans-serif; }
+header { position: sticky; top: 0; z-index: 5; background: var(--panel); border-bottom: 1px solid var(--line); padding: 10px 16px; }
+h1 { font-size: 16px; margin: 0 0 6px; }
+.bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.bar label { color: var(--muted); display: inline-flex; gap: 4px; align-items: center; }
+button, select, input[type=text] { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 4px 9px; }
+button { cursor: pointer; }
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.progress { margin-left: auto; color: var(--muted); }
+.help { color: var(--muted); font-size: 12px; margin-top: 6px; }
+main { padding: 12px 16px 80px; max-width: 1100px; margin: 0 auto; }
+.row { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; display: grid; grid-template-columns: 200px 1fr; gap: 8px 14px; }
+.row.cur { outline: 2px solid var(--accent); background: var(--cur); }
+.row.scored { border-left: 4px solid var(--s0); }
+.who b { font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+.who .meta { color: var(--muted); font-size: 12px; }
+.ref { font-size: 12px; color: var(--muted); }
+.clips { display: flex; flex-wrap: wrap; gap: 10px; }
+.clip { display: flex; flex-direction: column; gap: 2px; }
+.clip span { font-size: 12px; color: var(--muted); }
+audio { height: 32px; width: 300px; max-width: 100%; }
+.ctrl { grid-column: 2; display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; }
+.scores { display: flex; gap: 4px; }
+.scores button { width: 34px; padding: 4px 0; font-weight: 600; }
+.scores button.on { color: #fff; border-color: transparent; }
+.tags label { margin-right: 8px; font-size: 13px; }
+.memo { flex: 1; min-width: 160px; }
+@media (max-width: 700px) {
+  .row { grid-template-columns: 1fr; }
+  .ctrl { grid-column: 1; }
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>발화 난이도 채점 <span style="font-weight:400;color:var(--muted)">(0 = 잘 알아들음 · 5 = 거의 못 알아들음)</span></h1>
+  <div class="bar">
+    <label>보기 <select id="view">
+      <option value="candidate">학습 후보</option>
+      <option value="reference">기준 (테스트 22명)</option>
+      <option value="anchor">잘 말하는 사람 후보</option>
+      <option value="all">전체</option>
+    </select></label>
+    <label><input type="checkbox" id="unscored"> 안 매긴 것만</label>
+    <label><input type="checkbox" id="hideFolder" checked> 질환 숨기기</label>
+    <label><input type="checkbox" id="autoplay" checked> 이동하면 읽기 클립 자동 재생</label>
+    <button id="export" class="primary">CSV 저장</button>
+    <button id="importBtn">CSV 불러오기</button>
+    <input type="file" id="importFile" accept=".csv" hidden>
+    <span class="progress" id="progress"></span>
+  </div>
+  <div class="help">단축키: <b>j/k</b> 다음·이전 화자 · <b>q</b> 읽기 재생 · <b>w</b> 말하기 재생 · <b>space</b> 멈춤 · <b>0~5</b> 점수 후 다음 화자 · <b>a</b> 음절끊김 · <b>s</b> 단조억양 · <b>d</b> ㅅ→th · <b>f</b> 녹음 문제. 채점은 이 브라우저에 자동 저장되지만, 끝나면 꼭 <b>CSV 저장</b>을 누르세요.</div>
+</header>
+<main id="list"></main>
+<script>
+const ROWS = /*__DATA__*/[];
+const TAGS = [["음절끊김", "a"], ["단조억양", "s"], ["ㅅ→th", "d"], ["녹음문제", "f"]];
+const KEY = "marieum-listen-v1";
+
+const speakers = [];
+const bySpk = {};
+for (const r of ROWS) {
+  if (!bySpk[r.speaker]) { bySpk[r.speaker] = { ...r, clips: {} }; speakers.push(bySpk[r.speaker]); }
+  bySpk[r.speaker].clips[r.role] = r;
+}
+// 학습 후보는 질환 순서가 점수에 영향을 주지 않게 섞는다 (고정 시드)
+let seed = 7;
+const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+speakers.forEach(s => s.order = s.group === "reference" ? Number(s.ref_score) * 1000 + rand() : rand());
+
+let state = {};
+try { state = JSON.parse(localStorage.getItem(KEY) || "{}"); } catch (e) { state = {}; }
+const save = () => { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} };
+const st = spk => (state[spk] ||= { score: null, tags: [], memo: "" });
+
+const $ = id => document.getElementById(id);
+let visible = [], cur = 0;
+
+function render() {
+  const view = $("view").value, onlyNew = $("unscored").checked, hide = $("hideFolder").checked;
+  visible = speakers
+    .filter(s => view === "all" || s.group === view)
+    .filter(s => !onlyNew || st(s.speaker).score === null)
+    .sort((a, b) => a.order - b.order);
+  const list = $("list");
+  list.innerHTML = "";
+  visible.forEach((s, i) => {
+    const v = st(s.speaker);
+    const el = document.createElement("div");
+    el.className = "row" + (v.score !== null ? " scored" : "");
+    el.dataset.i = i;
+    const folder = hide && s.group !== "reference" ? "" : `${s.folder} · `;
+    const ref = s.group === "reference" ? `<div class="ref">기존 점수 ${s.ref_score}${s.ref_tags ? " · " + s.ref_tags : ""}</div>` : "";
+    const clip = (role, name) => s.clips[role]
+      ? `<div class="clip"><span>${name} (${s.clips[role].test_code})${Number(s.clips[role].speech_ratio) < 0.3 ? ' · <b style="color:var(--warn)">말소리 적음</b>' : ""}</span><audio preload="none" controls src="${s.clips[role].clip}" data-role="${role}"></audio></div>` : "";
+    el.innerHTML = `
+      <div class="who"><b>${s.speaker}</b><div class="meta">${folder}${s.group === "anchor" ? "기준점 후보" : s.group === "reference" ? "테스트" : "학습 후보"}${s.yoonaj_train === "True" ? " · yoona-J 학습" : ""}</div>${ref}</div>
+      <div class="clips">${clip("read", "읽기")}${clip("talk", "말하기")}</div>
+      <div class="ctrl">
+        <div class="scores">${[0,1,2,3,4,5].map(n => `<button data-score="${n}" class="${v.score === n ? "on" : ""}" style="${v.score === n ? `background:var(--s${n})` : ""}">${n}</button>`).join("")}</div>
+        <div class="tags">${TAGS.map(([t]) => `<label><input type="checkbox" data-tag="${t}" ${v.tags.includes(t) ? "checked" : ""}> ${t}</label>`).join("")}</div>
+        <input type="text" class="memo" placeholder="메모" value="${(v.memo || "").replace(/"/g, "&quot;")}">
+      </div>`;
+    el.addEventListener("click", () => setCur(i, false));
+    el.querySelectorAll("[data-score]").forEach(b => b.addEventListener("click", e => { e.stopPropagation(); setCur(i, false); score(Number(b.dataset.score)); }));
+    el.querySelectorAll("[data-tag]").forEach(c => c.addEventListener("change", () => toggleTag(s.speaker, c.dataset.tag, c.checked)));
+    el.querySelector(".memo").addEventListener("input", e => { st(s.speaker).memo = e.target.value; save(); });
+    list.appendChild(el);
+  });
+  cur = Math.min(cur, Math.max(visible.length - 1, 0));
+  highlight(false);
+  progress();
+}
+
+function progress() {
+  const groups = { candidate: "학습 후보", reference: "기준", anchor: "잘 말하는 사람" };
+  $("progress").textContent = Object.entries(groups).map(([g, name]) => {
+    const all = speakers.filter(s => s.group === g);
+    return `${name} ${all.filter(s => st(s.speaker).score !== null).length}/${all.length}`;
+  }).join(" · ");
+}
+
+function rowEl(i) { return $("list").querySelector(`.row[data-i="${i}"]`); }
+function stopAll() { document.querySelectorAll("audio").forEach(a => a.pause()); }
+function highlight(play) {
+  document.querySelectorAll(".row.cur").forEach(e => e.classList.remove("cur"));
+  const el = rowEl(cur);
+  if (!el) return;
+  el.classList.add("cur");
+  el.scrollIntoView({ block: "center", behavior: "smooth" });
+  if (play && $("autoplay").checked) playRole("read");
+}
+function setCur(i, play) { if (i !== cur) stopAll(); cur = Math.max(0, Math.min(i, visible.length - 1)); highlight(play); }
+function playRole(role) {
+  const a = rowEl(cur)?.querySelector(`audio[data-role="${role}"]`);
+  if (!a) return;
+  stopAll(); a.currentTime = 0; a.play().catch(() => {});
+}
+function score(n) {
+  const s = visible[cur]; if (!s) return;
+  const v = st(s.speaker); v.score = n; v.at = new Date().toISOString(); save();
+  const el = rowEl(cur);
+  el.classList.add("scored");
+  el.querySelectorAll("[data-score]").forEach(b => {
+    const on = Number(b.dataset.score) === n;
+    b.classList.toggle("on", on); b.style.background = on ? `var(--s${n})` : "";
+  });
+  progress();
+  setCur(cur + 1, true);
+}
+function toggleTag(spk, tag, on) {
+  const v = st(spk);
+  v.tags = on ? [...new Set([...v.tags, tag])] : v.tags.filter(t => t !== tag);
+  save();
+}
+
+document.addEventListener("keydown", e => {
+  if (e.target.tagName === "INPUT" && e.target.type === "text") return;
+  const k = e.key;
+  if (k === "j") setCur(cur + 1, true);
+  else if (k === "k") setCur(cur - 1, true);
+  else if (k === "q") playRole("read");
+  else if (k === "w") playRole("talk");
+  else if (k === " ") { e.preventDefault(); stopAll(); }
+  else if (/^[0-5]$/.test(k)) score(Number(k));
+  else {
+    const t = TAGS.find(([, key]) => key === k);
+    if (t && visible[cur]) {
+      const box = rowEl(cur).querySelector(`[data-tag="${t[0]}"]`);
+      box.checked = !box.checked; toggleTag(visible[cur].speaker, t[0], box.checked);
+    }
+  }
+});
+
+const csvCell = x => /[",\n]/.test(String(x)) ? `"${String(x).replace(/"/g, '""')}"` : String(x);
+$("export").addEventListener("click", () => {
+  const head = ["speaker", "group", "folder", "score", "tags", "memo", "ref_score", "scored_at"];
+  const lines = [head.join(",")];
+  for (const s of speakers) {
+    const v = st(s.speaker);
+    if (v.score === null && !v.memo && !v.tags.length) continue;
+    lines.push([s.speaker, s.group, s.folder, v.score ?? "", v.tags.join("|"), v.memo || "", s.ref_score, v.at || ""].map(csvCell).join(","));
+  }
+  const blob = new Blob(["﻿" + lines.join("\n")], { type: "text/csv" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `listen_scores_${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+});
+$("importBtn").addEventListener("click", () => $("importFile").click());
+$("importFile").addEventListener("change", async e => {
+  const text = (await e.target.files[0].text()).replace(/^﻿/, "");
+  const [head, ...lines] = text.trim().split(/\r?\n/);
+  const cols = head.split(",");
+  for (const line of lines) {
+    const cells = []; let cell = "", q = false;
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i];
+      if (q) { if (c === '"' && line[i + 1] === '"') { cell += '"'; i++; } else if (c === '"') q = false; else cell += c; }
+      else if (c === '"') q = true; else if (c === ",") { cells.push(cell); cell = ""; } else cell += c;
+    }
+    cells.push(cell);
+    const r = Object.fromEntries(cols.map((c, i) => [c, cells[i] ?? ""]));
+    if (!bySpk[r.speaker]) continue;
+    state[r.speaker] = { score: r.score === "" ? null : Number(r.score), tags: r.tags ? r.tags.split("|") : [], memo: r.memo, at: r.scored_at };
+  }
+  save(); render();
+});
+["view", "unscored", "hideFolder"].forEach(id => $(id).addEventListener("change", () => { cur = 0; render(); }));
+render();
+</script>
+</body>
+</html>

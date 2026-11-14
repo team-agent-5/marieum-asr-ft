@@ -17,7 +17,7 @@
 
 | 폴더 | 내용 |
 |---|---|
-| `data_prep/` | `inventory.py` 라벨만 읽어 파일·화자 목록 (`work/inventory/`) |
+| `data_prep/` | `inventory.py` 라벨만 읽어 파일·화자 목록 (`work/inventory/`). `make_listening_set.py` 직접 들어 난이도를 매길 화자별 20초 클립과 채점 페이지 (`work/listen/`) |
 | `splits/` | 화자 분할. `test_v1.csv`는 직접 들어 점수를 매긴 22명 (고정, 바꾸지 않는다) |
 | `experiments/` | `results.csv` 실험 하나에 한 줄 |
 | `docs/` | 조사 기록. [`nemotron_finetune_cases.md`](docs/nemotron_finetune_cases.md) Nemotron 3.5 파인튜닝 사례와 우리 설정에 반영할 점 |
@@ -43,5 +43,11 @@
 ```bash
 python data_prep/inventory.py --root "E:/Dataset_Backup/구음장애_음성인식_데이터"
 ```
+
+```bash
+python data_prep/make_listening_set.py --root "E:/Dataset_Backup/구음장애_음성인식_데이터"
+```
+
+`work/listen/index.html`을 크롬으로 열어 듣고 채점한다 (ffmpeg 필요). 채점 결과는 페이지의 **CSV 저장**으로 `work/listen/scores/`에 둔다. 메모 칸에 전사 문장을 적지 않는다.
 
 Windows 콘솔에서 한글이 깨지면 `PYTHONIOENCODING=utf-8`을 붙인다.
