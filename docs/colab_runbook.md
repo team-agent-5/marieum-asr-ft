@@ -128,25 +128,34 @@ colab --auth=oauth2 drivemount -s seg
 
 `drivemount`는 브라우저 동의 후 Enter가 필요하다. **사용자가 직접 실행한다** (에이전트는 못 한다).
 
-## C. 풀고, 스크립트 올리고, 백그라운드로 실행
+## C. 풀고, 스크립트 올리고, 실행 (커널이 끝까지 기다리게)
+
+> **백그라운드(nohup)로 띄우지 않는다.** 커널이 쉬면 Colab이 VM을 회수한다 (11-15: nohup으로 띄우고 exec가 바로 끝났더니
+> 30분 안에 세션이 사라졌다). 아래 셋째 명령은 작업이 끝날 때까지 커널을 붙잡는다. CLI가 중간에 `TimeoutError`로
+> 끝나도 VM 안 작업은 계속된다 (제로샷 때 확인). 진행은 D단계처럼 커널을 거치지 않고 확인한다.
 
 ```bash
 echo 'import subprocess; subprocess.run("cat /content/drive/MyDrive/marieum-asr-ft/data/train_audio.tar.part-* | tar -x -C /content", shell=True, check=True); import os; print(len(os.listdir("/content/train_audio")), "speakers")' | colab --auth=oauth2 exec -s seg
 colab --auth=oauth2 upload -s seg colab/segment_transcribe.py /content/segment_transcribe.py
-echo 'import subprocess, os; os.makedirs("/content/drive/MyDrive/marieum-asr-ft/runs/segments", exist_ok=True); subprocess.Popen("nohup python /content/segment_transcribe.py > /content/drive/MyDrive/marieum-asr-ft/runs/segments/run.log 2>&1 &", shell=True); print("started")' | colab --auth=oauth2 exec -s seg
+echo 'import subprocess, os; d="/content/drive/MyDrive/marieum-asr-ft/runs/segments"; os.makedirs(d, exist_ok=True); p=subprocess.run("python /content/segment_transcribe.py >> "+d+"/run.log 2>&1", shell=True); print("exit", p.returncode)' | colab --auth=oauth2 exec -s seg
 ```
 
 - 첫 줄 출력이 `278 speakers`여야 한다
-- 처음 몇 분은 패키지 설치와 모델 내려받기다
+- 셋째 명령은 1~3시간 붙잡고 있다. 에이전트는 이 명령을 백그라운드 셸로 돌리고 기다린다. CLI가 `TimeoutError`로 끝나도 다시 실행하지 않는다
+- 이미 Drive에 저장된 화자는 건너뛴다 (중간에 VM이 사라졌으면 B단계부터 다시 하면 이어서 한다)
 
-## D. 진행 확인 (몇십 분마다)
+## D. 진행 확인 (30분마다, 커널을 쓰지 않는 명령만)
 
 ```bash
-echo 'from pathlib import Path; d=Path("/content/drive/MyDrive/marieum-asr-ft/runs/segments"); print((d/"progress.txt").read_text() if (d/"progress.txt").exists() else "아직 없음"); print("DONE" if (d/"DONE").exists() else ""); print(open(d/"run.log").read()[-1500:])' | colab --auth=oauth2 exec -s seg
+colab --auth=oauth2 status -s seg
+colab --auth=oauth2 download -s seg /content/drive/MyDrive/marieum-asr-ft/runs/segments/progress.txt work/segments/progress.txt && cat work/segments/progress.txt
+colab --auth=oauth2 ls -s seg /content/drive/MyDrive/marieum-asr-ft/runs/segments
 ```
 
-- `progress.txt`에 `k/278 화자 ...`가 나온다. 예상 1~3시간
-- 로그에 오류가 있으면 멈추고 보고한다. 결과는 화자 단위로 Drive에 저장되므로, VM이 끊겨도 C단계부터 다시 하면 남은 화자만 이어서 한다
+- `status`가 BUSY여야 정상이다. IDLE인데 `DONE`이 없으면 작업이 죽은 것이다. 그때 `run.log`를 내려받아 끝부분의 오류만 보고한다
+- `progress.txt`에 `k/278 화자 ...`가 나온다. `ls`에 `DONE`이 보이면 E단계로 간다
+- 이 단계에서 `colab exec`를 쓰지 않는다. 커널이 바빠서 줄을 서고, 앞 작업을 방해할 수 있다
+- 사용자는 브라우저로 Drive `marieum-asr-ft/runs/segments/`의 `progress.txt`와 화자별 `.jsonl` 개수를 봐도 된다
 
 ## E. 결과 받기와 반납
 
