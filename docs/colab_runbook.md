@@ -102,3 +102,67 @@ python eval/score.py --hyps work/eval/whisper_yoonaj/hyps.jsonl --out work/eval/
 - **앞 600초만 쓴 녹음 6개:** 정답이 녹음 전체 전사라서, 들은 부분까지만 맞춰 채점한다
 - **진행자 목소리:** 정답에는 환자 말만 있을 수 있다. 진행자 말을 받아 적으면 삽입 오류가 된다. 두 모델에 똑같이 적용되니 비교에는 문제가 없지만, 절대값은 실제보다 나쁘게 나올 수 있다
 - **`track=seen` 7명:** 지금은 학습 전이라 모든 화자가 처음 보는 사람이다. 파인튜닝 뒤부터 `seen`과 `unseen`을 나눠 본다
+
+---
+
+# 문장 나누기 (학습 데이터 만들기)
+
+학습 녹음 128시간(278명, 583개 파일)을 말소리 구간으로 자르고 yoona-J로 받아쓴다. 정답 붙이기는 이 PC에서 한다.
+**모든 colab 명령 앞에 `MSYS_NO_PATHCONV=1`을 붙인다 (Git Bash).**
+
+## A. 묶어서 Drive에 올리기 (사용자, 이 PC)
+
+```bash
+bash colab/pack_train.sh
+```
+
+`work/upload/train_audio.tar.part-00` ~ `-04` (1GB × 4 + 0.3GB, 정답 없음)가 생긴다.
+**브라우저로 Google Drive `marieum-asr-ft/data/` 폴더에 5개를 모두 올린다.**
+
+## B. VM 띄우고 Drive 연결
+
+```bash
+colab --auth=oauth2 new -s seg --gpu L4
+colab --auth=oauth2 drivemount -s seg
+```
+
+`drivemount`는 브라우저 동의 후 Enter가 필요하다. **사용자가 직접 실행한다** (에이전트는 못 한다).
+
+## C. 풀고, 스크립트 올리고, 백그라운드로 실행
+
+```bash
+echo 'import subprocess; subprocess.run("cat /content/drive/MyDrive/marieum-asr-ft/data/train_audio.tar.part-* | tar -x -C /content", shell=True, check=True); import os; print(len(os.listdir("/content/train_audio")), "speakers")' | colab --auth=oauth2 exec -s seg
+colab --auth=oauth2 upload -s seg colab/segment_transcribe.py /content/segment_transcribe.py
+echo 'import subprocess, os; os.makedirs("/content/drive/MyDrive/marieum-asr-ft/runs/segments", exist_ok=True); subprocess.Popen("nohup python /content/segment_transcribe.py > /content/drive/MyDrive/marieum-asr-ft/runs/segments/run.log 2>&1 &", shell=True); print("started")' | colab --auth=oauth2 exec -s seg
+```
+
+- 첫 줄 출력이 `278 speakers`여야 한다
+- 처음 몇 분은 패키지 설치와 모델 내려받기다
+
+## D. 진행 확인 (몇십 분마다)
+
+```bash
+echo 'from pathlib import Path; d=Path("/content/drive/MyDrive/marieum-asr-ft/runs/segments"); print((d/"progress.txt").read_text() if (d/"progress.txt").exists() else "아직 없음"); print("DONE" if (d/"DONE").exists() else ""); print(open(d/"run.log").read()[-1500:])' | colab --auth=oauth2 exec -s seg
+```
+
+- `progress.txt`에 `k/278 화자 ...`가 나온다. 예상 1~3시간
+- 로그에 오류가 있으면 멈추고 보고한다. 결과는 화자 단위로 Drive에 저장되므로, VM이 끊겨도 C단계부터 다시 하면 남은 화자만 이어서 한다
+
+## E. 결과 받기와 반납
+
+```bash
+echo 'import subprocess; subprocess.run("tar -czf /content/segments.tgz -C /content/drive/MyDrive/marieum-asr-ft/runs segments", shell=True, check=True); import os; print(os.path.getsize("/content/segments.tgz"))' | colab --auth=oauth2 exec -s seg
+mkdir -p work/segments
+colab --auth=oauth2 download -s seg /content/segments.tgz work/segments/segments.tgz
+colab --auth=oauth2 stop -s seg
+colab --auth=oauth2 sessions
+```
+
+## F. 정답 붙이기 (이 PC)
+
+```bash
+mkdir -p work/segments/vm && tar -xzf work/segments/segments.tgz -C work/segments/vm --strip-components=1
+python data_prep/align_segments.py --segs work/segments/vm
+```
+
+출력: `~/marieum-private/segments_train.jsonl`, `segments_val.jsonl` (학습 manifest, 레포 밖), `work/segments/align_stats.csv` (화자별 숫자).

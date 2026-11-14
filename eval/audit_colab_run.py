@@ -21,7 +21,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 HIST = Path.home() / ".config" / "colab-cli" / "history"
-SESSIONS = ["smoke", "nemo"]
+SESSIONS = ["smoke", "nemo", "seg"]
 RESULTS = ["work/eval/nemotron_zs_320ms/hyps.jsonl", "work/eval/whisper_yoonaj/hyps.jsonl"]
 ok = True
 
@@ -68,7 +68,8 @@ def main():
             if "op" in e:  # 파일 올리기·내려받기
                 local = str(e.get("local", "")).replace("\\", "/")
                 if e["op"] == "upload":
-                    good = "/work/upload/" in "/" + local or local.endswith("README.md")
+                    good = ("/work/upload/" in "/" + local or local.endswith("README.md")
+                            or ("/colab/" in "/" + local and local.endswith(".py")))
                     report(good and "refs" not in local, f"{s} 업로드 {local} -> {e.get('remote')}")
             elif "code" in e:
                 code = e["code"]
@@ -92,7 +93,7 @@ def main():
 
     print("3. 남은 VM")
     live = run(["colab", "--auth=oauth2", "sessions"])
-    report(not any(f"[{s}]" in live for s in SESSIONS), "smoke·nemo 세션 반납됨")
+    report(not any(f"[{s}]" in live for s in SESSIONS), f"{'·'.join(SESSIONS)} 세션 반납됨")
 
     print("4. 결과 파일")
     manifest = [json.loads(l)["speaker"] for l in open(ROOT / "work/test_v2/manifest.jsonl", encoding="utf-8")]

@@ -23,13 +23,39 @@ _NOISE_TAG = re.compile(r"(?<![A-Za-z])[A-Za-z]/")
 _KEEP = re.compile(r"[^0-9A-Za-z가-힣]")
 
 
-def normalize(text: str, dual: str = "spoken") -> str:
+_TRAIN_DROP = re.compile(r"[^0-9A-Za-z가-힣 .,?!]")
+_SPACES = re.compile(r"\s+")
+_SPACE_PUNCT = re.compile(r"\s+([.,?!])")
+
+
+def _strip_labels(text: str, dual: str) -> str:
     t = text or ""
     t = _EXCEL_ESC.sub(" ", t)
     t = _UNICODE_ESC.sub(" ", t)
     t = _DUAL.sub(lambda m: m.group(2) if dual == "spoken" else m.group(1), t)
     t = _LATIN_THEN_HANGUL.sub(r"\1", t)
     t = _HANGUL_THEN_LATIN.sub(r"\1", t)
-    t = _NOISE_TAG.sub(" ", t)
-    t = _KEEP.sub("", t)  # 괄호·*·+·/·문장부호·공백
+    return _NOISE_TAG.sub(" ", t)
+
+
+def normalize(text: str, dual: str = "spoken") -> str:
+    t = _KEEP.sub("", _strip_labels(text, dual))  # 괄호·*·+·/·문장부호·공백
     return t.lower()
+
+
+def clean_for_training(text: str, dual: str = "spoken") -> str:
+    """학습용 문장: 라벨 기호는 지우고 띄어쓰기와 . , ? !는 남긴다 (모델이 문장부호 있는 문장을 낸다)."""
+    t = _TRAIN_DROP.sub(" ", _strip_labels(text, dual))
+    t = _SPACES.sub(" ", t)
+    return _SPACE_PUNCT.sub(r"\1", t).strip(" .,?!")  # "써요 ." -> "써요.", 앞뒤 부호 정리
+
+
+
+def norm_with_map(clean: str):
+    """clean_for_training 결과에서 CER용 글자만 뽑고, 각 글자가 clean의 몇 번째 글자였는지 함께 준다."""
+    chars, pos = [], []
+    for i, ch in enumerate(clean):
+        if ch.isalnum():
+            chars.append(ch.lower())
+            pos.append(i)
+    return "".join(chars), pos
