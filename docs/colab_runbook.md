@@ -4,7 +4,7 @@ agy가 이 순서대로 `colab` CLI를 실행한다. 명령은 모두 레포 루
 
 ## 지킬 것
 
-- **정답 전사(`work/test_v2/refs.jsonl`)는 Colab에 올리지 않는다.** 채점은 이 PC에서 한다
+- **정답 전사는 레포 밖(`~/marieum-private/`)에 있다. 읽거나 올리지 않는다.** 채점은 사용자가 이 PC에서 한다
 - 로그나 출력에 전사 문장을 붙여 넣지 않는다. 숫자(CER 등)만 보고한다
 - 작업이 끝나면 반드시 `colab stop`으로 VM을 반납하고 `colab sessions`로 남은 VM이 없는지 확인한다
 - 인증은 `--auth=oauth2`를 쓴다 (이 PC에 토큰이 있다)

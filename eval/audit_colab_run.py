@@ -79,8 +79,8 @@ def main():
                     print(f"  -    {s} 짧은 명령: {short}")
                 else:
                     report(False, f"{s} 레포에 없는 코드 실행: {short} ({len(code)}자)")
-                if "refs.jsonl" in code:
-                    report(False, f"{s} 실행 코드에 refs.jsonl이 나온다")
+                if "refs.jsonl" in code or "marieum-private" in code:
+                    report(False, f"{s} 실행 코드에 정답 파일 경로가 나온다")
 
     print("3. 남은 VM")
     live = run(["colab", "--auth=oauth2", "sessions"])

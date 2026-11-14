@@ -2,7 +2,7 @@
 
 입력
   --hyps   모델 출력 jsonl. 줄마다 {"speaker": ..., "text": ...} (Colab 제로샷 스크립트 출력)
-  --refs   work/test_v2/refs.jsonl (extract_test_audio.py가 만든 정답. 이 PC에만 있다)
+  --refs   ~/marieum-private/test_v2_refs.jsonl (extract_test_audio.py가 만든 정답. 레포 밖, 이 PC에만 있다)
   --split  splits/test_v2.csv (묶음·track·태그)
 출력 (--out 폴더)
   per_speaker.csv   화자별 CER, 치환·삭제·삽입, 반복 루프 글자 수
@@ -27,6 +27,8 @@ import numpy as np
 
 from textnorm import normalize
 
+# 정답은 레포 밖에 둔다. 레포 폴더에서 일하는 다른 에이전트가 읽거나 올리지 못하게
+PRIVATE_REFS = Path.home() / "marieum-private" / "test_v2_refs.jsonl"
 DIAG, UP, LEFT = 0, 1, 2  # UP = 출력에만 있는 글자(삽입), LEFT = 정답에만 있는 글자(삭제)
 
 
@@ -85,7 +87,7 @@ def loop_chars(hyp: str, ref: str) -> int:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--hyps", required=True)
-    ap.add_argument("--refs", default="work/test_v2/refs.jsonl")
+    ap.add_argument("--refs", default=str(PRIVATE_REFS))
     ap.add_argument("--split", default="splits/test_v2.csv")
     ap.add_argument("--out", required=True)
     ap.add_argument("--dual", choices=["spoken", "written"], default="spoken")

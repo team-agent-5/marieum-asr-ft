@@ -3,7 +3,8 @@
 출력 (work/test_v2/, gitignore):
   audio/<speaker>.flac   eval_note=first600s면 앞 600초만
   manifest.jsonl         Colab에 올리는 목록. 전사가 없다 (audio_filepath, duration, speaker, target_lang)
-  refs.jsonl             정답 전사. 이 PC에서 채점할 때만 쓴다. Colab·git에 올리지 않는다
+  정답 전사는 레포 밖 ~/marieum-private/test_v2_refs.jsonl에 쓴다 (--refs-out).
+  이 PC에서 채점할 때만 쓰고, Colab·git에 올리지 않는다. 레포에서 일하는 다른 에이전트가 읽지 못하게 밖에 둔다
 
     python data_prep/extract_test_audio.py --root "E:/Dataset_Backup/구음장애_음성인식_데이터"
 """
@@ -64,6 +65,7 @@ def main():
     ap.add_argument("--split", default="splits/test_v2.csv")
     ap.add_argument("--out", default="work/test_v2")
     ap.add_argument("--workers", type=int, default=6)
+    ap.add_argument("--refs-out", default=str(Path.home() / "marieum-private" / "test_v2_refs.jsonl"))
     args = ap.parse_args()
     root, out = Path(args.root), Path(args.out)
 
@@ -97,8 +99,9 @@ def main():
     if missing:
         raise SystemExit(f"라벨 없음: {missing}")
 
+    Path(args.refs_out).parent.mkdir(parents=True, exist_ok=True)
     with open(out / "manifest.jsonl", "w", encoding="utf-8") as fm, \
-         open(out / "refs.jsonl", "w", encoding="utf-8") as fr:
+         open(args.refs_out, "w", encoding="utf-8") as fr:
         for r in rows:
             audio = out / "audio" / f"{r['speaker']}.flac"
             fm.write(json.dumps({"audio_filepath": f"audio/{audio.name}", "duration": duration(audio),
