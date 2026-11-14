@@ -2,6 +2,10 @@
 
 agy가 이 순서대로 `colab` CLI를 실행한다. 명령은 모두 레포 루트(`D:\codyssey-hack\marieum-asr-ft`)에서 Git Bash로 돌린다.
 
+> **Git Bash에서는 먼저 `export MSYS_NO_PATHCONV=1`을 실행한다.** 안 하면 Git Bash가 `/content/...` 같은 VM 경로를
+> `C:/Program Files/Git/content/...`로 바꿔 `upload`·`download`·`ls`가 500 오류로 실패한다 (11-14 확인).
+> PowerShell에서 `bash -lc "..."`로 한 줄씩 부르면 매번 `MSYS_NO_PATHCONV=1 colab ...`처럼 앞에 붙인다.
+
 ## 지킬 것
 
 - **정답 전사는 레포 밖(`~/marieum-private/`)에 있다. 읽거나 올리지 않는다.** 채점은 사용자가 이 PC에서 한다
