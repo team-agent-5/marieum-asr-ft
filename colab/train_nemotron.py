@@ -34,6 +34,10 @@ LR = float(os.environ.get("LR", "3e-5"))
 WARMUP = int(os.environ.get("WARMUP", "200"))
 EFFECTIVE_BATCH_S = float(os.environ.get("EFFECTIVE_BATCH_S", "400"))  # 한 번 갱신에 들어가는 음성 초
 LOG = DRIVE / "runs" / "train" / f"{RUN}.log"
+TRAIN_MANIFEST = os.environ.get("TRAIN_MANIFEST", "train_v2.jsonl")
+VAL_MANIFEST = os.environ.get("VAL_MANIFEST", "val_v2.jsonl")
+CONF_DIR = "examples/asr/conf/fastconformer/cache_aware_streaming"
+CONF_NAME = "fastconformer_transducer_bpe_streaming_prompt"
 
 
 def sh(cmd, **kw):
@@ -70,6 +74,39 @@ def unpack():
     sh(f"cat {DRIVE}/data/train_audio.tar.part-* | tar -x -C /content")
 
 
+def overrides(train_m, val_m, bd, accum):
+    """NeMo 설정 덮어쓰기. 공식 설정에 없는 키는 ++ (있으면 덮어쓰기, 없으면 추가).
+    바꾸면 이 PC에서 먼저 검사한다: python colab/check_train_config.py"""
+    return [
+        f"+init_from_pretrained_model={BASE}",
+        # 데이터
+        f"model.train_ds.manifest_filepath={train_m}", "model.train_ds.is_tarred=false",
+        "model.train_ds.tarred_audio_filepaths=null", f"model.train_ds.batch_duration={bd}",
+        "++model.train_ds.use_bucketing=true", "model.train_ds.num_buckets=10", "model.train_ds.bucket_buffer_size=5000",
+        "model.train_ds.max_duration=22", "model.train_ds.min_duration=0.5", "model.train_ds.shuffle=true",
+        "++model.train_ds.perturb_speed=true", "model.train_ds.num_workers=4",
+        f"model.validation_ds.manifest_filepath={val_m}", "model.validation_ds.batch_size=8",
+        "model.validation_ds.num_workers=2",
+        "~model.test_ds",
+        # 최적화: 작은 학습률 + 코사인 (Noam의 lr은 배율이라 헷갈려서 바꾼다)
+        "model.optim.name=adamw", f"model.optim.lr={LR}", "model.optim.weight_decay=1e-3",
+        "model.optim.sched.name=CosineAnnealing", f"model.optim.sched.warmup_steps={WARMUP}",
+        "model.optim.sched.min_lr=1e-6", "~model.optim.sched.d_model",
+        # 학습기. strategy는 공식 설정에서 DDPStrategy 묶음이라 지우고 새로 넣는다 (GPU 1장)
+        "trainer.devices=1", "trainer.accelerator=gpu", "~trainer.strategy", "+trainer.strategy=auto",
+        "trainer.precision=bf16-mixed", f"trainer.max_steps={MAX_STEPS}",
+        f"trainer.limit_train_batches={EVAL_EVERY}", "trainer.val_check_interval=1.0",
+        f"trainer.accumulate_grad_batches={accum}", "trainer.log_every_n_steps=25", "trainer.gradient_clip_val=0.5",
+        # 체크포인트: Drive, 이어하기
+        f"exp_manager.exp_dir={DRIVE / 'ckpt'}", f"exp_manager.name={RUN}", "++exp_manager.version=v1",
+        "++exp_manager.use_datetime_version=false", "exp_manager.resume_if_exists=true",
+        "exp_manager.resume_ignore_no_checkpoint=true",
+        "exp_manager.checkpoint_callback_params.save_top_k=1",
+        "exp_manager.checkpoint_callback_params.always_save_nemo=true",
+        "exp_manager.create_tensorboard_logger=true",
+    ]
+
+
 def main():
     t0 = time.time()
     LOG.parent.mkdir(parents=True, exist_ok=True)
@@ -81,41 +118,13 @@ def main():
 
     unpack()
     install()
-    train_m, val_m = DRIVE / "data/manifests/train_v1.jsonl", DRIVE / "data/manifests/val_v1.jsonl"
+    train_m, val_m = DRIVE / "data/manifests" / TRAIN_MANIFEST, DRIVE / "data/manifests" / VAL_MANIFEST
     for m in (train_m, val_m):
         if not m.exists():
             raise SystemExit(f"{m}가 없다. 이 PC의 ~/marieum-private/manifests/를 Drive data/manifests/에 올린다")
 
-    conf_dir = NEMO / "examples/asr/conf/fastconformer/cache_aware_streaming"
-    args = [
-        sys.executable, str(NEMO / "examples/asr/speech_to_text_finetune.py"),
-        f"--config-path={conf_dir}", "--config-name=fastconformer_transducer_bpe_streaming_prompt",
-        f"+init_from_pretrained_model={BASE}",
-        # 데이터
-        f"model.train_ds.manifest_filepath={train_m}", "model.train_ds.is_tarred=false",
-        "model.train_ds.tarred_audio_filepaths=null", f"model.train_ds.batch_duration={bd}",
-        "model.train_ds.use_bucketing=true", "model.train_ds.num_buckets=10", "model.train_ds.bucket_buffer_size=5000",
-        "model.train_ds.max_duration=22", "model.train_ds.min_duration=0.5", "model.train_ds.shuffle=true",
-        "++model.train_ds.perturb_speed=true", "model.train_ds.num_workers=4",
-        f"model.validation_ds.manifest_filepath={val_m}", "model.validation_ds.batch_size=8",
-        "model.validation_ds.num_workers=2",
-        "~model.test_ds",
-        # 최적화: 작은 학습률 + 코사인 (Noam의 lr은 배율이라 헷갈려서 바꾼다)
-        "model.optim.name=adamw", f"model.optim.lr={LR}", "model.optim.weight_decay=1e-3",
-        "model.optim.sched.name=CosineAnnealing", f"model.optim.sched.warmup_steps={WARMUP}",
-        "model.optim.sched.min_lr=1e-6", "~model.optim.sched.d_model",
-        # 학습기
-        "trainer.devices=1", "trainer.accelerator=gpu", "trainer.strategy=auto", "trainer.precision=bf16-mixed",
-        f"trainer.max_steps={MAX_STEPS}", f"trainer.limit_train_batches={EVAL_EVERY}", "trainer.val_check_interval=1.0",
-        f"trainer.accumulate_grad_batches={accum}", "trainer.log_every_n_steps=25", "trainer.gradient_clip_val=0.5",
-        # 체크포인트: Drive, 이어하기
-        f"exp_manager.exp_dir={DRIVE / 'ckpt'}", f"exp_manager.name={RUN}", "exp_manager.version=v1",
-        "exp_manager.use_datetime_version=false", "exp_manager.resume_if_exists=true",
-        "exp_manager.resume_ignore_no_checkpoint=true",
-        "exp_manager.checkpoint_callback_params.save_top_k=1",
-        "exp_manager.checkpoint_callback_params.always_save_nemo=true",
-        "exp_manager.create_tensorboard_logger=true",
-    ]
+    args = [sys.executable, str(NEMO / "examples/asr/speech_to_text_finetune.py"),
+            f"--config-path={NEMO / CONF_DIR}", f"--config-name={CONF_NAME}"] + overrides(train_m, val_m, bd, accum)
     with open(LOG, "a", encoding="utf-8") as f:
         f.write(f"\n=== {time.strftime('%Y-%m-%d %H:%M:%S')} {gpu} bd={bd} accum={accum} steps={MAX_STEPS} lr={LR}\n")
         f.flush()
@@ -128,4 +137,5 @@ def main():
     print("저장된 .nemo:", [n.name for n in nemos])
 
 
-main()
+if __name__ == "__main__":
+    main()

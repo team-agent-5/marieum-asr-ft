@@ -188,9 +188,18 @@ python data_prep/align_segments.py --segs work/segments/vm
 python data_prep/build_train_manifests.py
 ```
 
-- 출력: `~/marieum-private/manifests/train_v1.jsonl`, `val_v1.jsonl` (전사 포함, 레포 밖)
+- 출력: `~/marieum-private/manifests/train_v2.jsonl`, `val_v2.jsonl` (전사 포함, 레포 밖)
 - 화자당 상한 20분 (기준점 10분), 반복 중증 3·중등도 2·경증 1·기준점 2. 묶음별 시간과 비율이 출력된다
+- v2부터 같은 녹음에서 바로 이어지는 구간(쉼 3초 이하)을 절반 확률로 18초까지 이어 붙인다. 쉬었다 이어 말할 때 글자를 놓치지 않게
 - **사용자가 두 파일을 브라우저로 Drive `marieum-asr-ft/data/manifests/`에 올린다**
+
+## 0-1. 설정 미리 검사 (이 PC, 학습 스크립트를 고쳤으면 매번)
+
+```bash
+python colab/check_train_config.py
+```
+
+NeMo 공식 설정에 대해 덮어쓰기 키를 하나씩 검사한다. `실패 0개`가 아니면 VM을 띄우지 않는다 (11-15 시험 학습이 키 오류로 2분 만에 실패).
 
 ## 1. VM과 Drive (사용자)
 

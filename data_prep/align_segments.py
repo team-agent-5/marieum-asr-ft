@@ -144,7 +144,7 @@ def main():
         tier = meta["tier"]
         st = stats[meta["speaker"]]
         st["split"], st["tier"] = meta["split"], tier
-        for s, text, cer in assign(segs, ref["text"], cap):
+        for k, (s, text, cer) in enumerate(assign(segs, ref["text"], cap)):
             dur = s["end"] - s["start"]
             st["segs"] += 1
             st["speech_min"] += dur / 60
@@ -162,7 +162,8 @@ def main():
                 "audio_filepath": f"{args.audio_root}/{meta['speaker']}/{stem}.flac",
                 "offset": s["start"], "duration": round(dur, 2), "text": text,
                 "target_lang": "ko-KR", "lang": "ko-KR",
-                "speaker": meta["speaker"], "tier": tier, "seg_cer": cer})
+                "speaker": meta["speaker"], "tier": tier, "seg_cer": cer,
+                "stem": stem, "seg_idx": k})  # 이어 붙이기용: 같은 파일에서 바로 다음 구간인지 안다
 
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
