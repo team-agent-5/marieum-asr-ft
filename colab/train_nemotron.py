@@ -85,6 +85,9 @@ def overrides(train_m, val_m, bd, accum):
         "++model.train_ds.use_bucketing=true", "model.train_ds.num_buckets=10", "model.train_ds.bucket_buffer_size=5000",
         "model.train_ds.max_duration=22", "model.train_ds.min_duration=0.5", "model.train_ds.shuffle=true",
         "++model.train_ds.perturb_speed=true", "model.train_ds.num_workers=4",
+        # 언어: 항상 ko-KR을 준다. 공식 기본값 unified는 절반을 '언어 스스로 맞히기'(auto)로 학습한다 (11-15 시험 학습).
+        # 마리음은 항상 한국어라 필요 없다
+        "model.train_ds.default_prompt_mode=langID", "++model.validation_ds.default_prompt_mode=langID",
         f"model.validation_ds.manifest_filepath={val_m}", "model.validation_ds.batch_size=8",
         "model.validation_ds.num_workers=2",
         "~model.test_ds",
