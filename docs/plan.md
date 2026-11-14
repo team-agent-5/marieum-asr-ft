@@ -41,7 +41,7 @@
 | **11-14 (토)** | 어려운 14명 결정 → `train_v1` / `val_v1` / `test_v2` 분할 (완료) | 사용자 결정, Claude 작성 |
 | 11-14 ~ 15 | 테스트 화자 음성 추출 (16kHz FLAC, 30명 380분, 완료). 평가 스크립트 (`eval/score.py`, 완료). Colab 스크립트와 실행 순서 (`docs/colab_runbook.md`, 완료) | Claude |
 | 11-15 | Colab 첫 시험: CPU VM으로 `new` → `upload` → `exec` → `stop`이 Windows에서 되는지 확인 | agy |
-| 11-15 ~ 16 | **제로샷 비교:** yoona-J, Nemotron, Zipformer를 같은 22명에 돌린다. 테스트 음성은 로컬에서 바로 올린다 (Drive 불필요) | agy 실행, Claude 스크립트 |
+| 11-14 | **제로샷 비교 (완료):** Nemotron 54.7 / yoona-J 오프라인 104.7 (지어내기 폭발, 운영 기준 아님). Nemotron은 지어내지 않지만 중증을 못 알아듣는다 → 파인튜닝 필수. 결과: [`docs/zeroshot_results.md`](zeroshot_results.md). Zipformer는 생략 | 외부 에이전트 실행, Claude 채점 |
 | **11-16 (월)** | 팀 회의: 제로샷 결과, 채점 결과, 이 일정 공유. GPU 서버 확인 | 사용자, 팀장 |
 | 11-16 ~ 18 | **문장 나누기:** 30분 녹음과 전체 전사를 제로샷 모델로 정렬해 문장 조각으로 자른다. 정렬 점수가 낮은 조각은 버리고, 중증 조각은 일부를 직접 들어 확인한다. 진행자 목소리를 거른다 | Claude, 사용자 확인 |
 | 11-18 ~ 19 | 학습 데이터 tar 묶음 (약 50~90h, 5GB 안팎) → Google Drive 업로드 | Claude, 사용자 업로드 |

@@ -54,6 +54,7 @@ def main():
 
     print("2. Colab 실행 기록")
     known = {norm(p.read_text(encoding="utf-8")): p.name for p in (ROOT / "colab").glob("*.py")}
+    ran = set()
     for s in SESSIONS:
         f = HIST / f"{s}.jsonl"
         if not f.exists():
@@ -74,6 +75,7 @@ def main():
                 name = known.get(norm(code))
                 short = code.strip().splitlines()[0][:80] if code.strip() else ""
                 if name:
+                    ran.add(name)
                     print(f"  OK   {s} 실행 colab/{name}")
                 elif len(code) < 400 and ("print" in code or "open(" in code) and "refs" not in code:
                     print(f"  -    {s} 짧은 명령: {short}")
@@ -81,6 +83,12 @@ def main():
                     report(False, f"{s} 레포에 없는 코드 실행: {short} ({len(code)}자)")
                 if "refs.jsonl" in code or "marieum-private" in code:
                     report(False, f"{s} 실행 코드에 정답 파일 경로가 나온다")
+
+    # colab exec가 끝나기 전에 CLI가 타임아웃되면 기록이 남지 않는다 (11-14). 이때는 코드를 확인할 수 없다
+    for script, res in (("zeroshot_nemotron.py", RESULTS[0]), ("transcribe_whisper.py", RESULTS[1])):
+        if (ROOT / res).exists() and script not in ran:
+            print(f"  주의 {script} 실행 기록이 없다 (CLI 타임아웃이면 기록이 안 남는다). "
+                  f"run_info.json 형식으로만 간접 확인한다")
 
     print("3. 남은 VM")
     live = run(["colab", "--auth=oauth2", "sessions"])
