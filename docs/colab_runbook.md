@@ -256,3 +256,63 @@ python eval/score.py --hyps work/eval/pilot_v1_320ms/hyps.jsonl --out work/eval/
 ```
 
 제로샷(EXP-001)과 비교한다. 중증 CER이 내려가고 경증이 크게 나빠지지 않으면 본 학습(MAX_STEPS 3000, RUN_NAME ft_v1)으로 간다.
+
+---
+
+# 중증 구간 다시 건지기 (본 학습 전)
+
+시험 학습 모델(pilot_v1)로 중등도·중증 72명의 말소리 구간(약 12.5h)을 다시 받아쓴다. 이 PC에서 yoona-J 받아쓰기와 합쳐 정렬한다.
+**모든 colab 명령 앞에 `MSYS_NO_PATHCONV=1`.** 긴 실행은 커널이 끝까지 기다리게 한다.
+
+## 1. VM과 Drive (사용자)
+
+```bash
+colab --auth=oauth2 new -s retx --gpu A100
+colab --auth=oauth2 drivemount -s retx
+```
+
+추론만 하므로 L4도 된다 (A100보다 1.5~2배 느림).
+
+## 2. 실행
+
+```bash
+colab --auth=oauth2 upload -s retx colab/retranscribe_segments.py /content/retranscribe_segments.py
+colab --auth=oauth2 upload -s retx work/upload/retranscribe_speakers.txt /content/retranscribe_speakers.txt
+echo 'import subprocess; p=subprocess.run("python /content/retranscribe_segments.py", shell=True); print("exit", p.returncode)' | colab --auth=oauth2 exec -s retx
+```
+
+- 처음 15~20분: 학습 녹음 풀기, NeMo 설치, 구간 자르기 (약 9,200개)
+- 받아쓰기: A100 약 1시간 (예상)
+- CLI가 `TimeoutError`로 끝나도 다시 보내지 않는다
+
+## 3. 진행 확인 (커널을 쓰지 않는 명령만)
+
+```bash
+colab --auth=oauth2 status -s retx
+colab --auth=oauth2 ls -s retx /content/drive/MyDrive/marieum-asr-ft/runs/segments_pilot
+```
+
+`DONE`이 보이면 4단계. IDLE인데 `DONE`이 없으면 `run.log`를 내려받아 끝부분 오류를 보고한다.
+
+## 4. 결과 받기와 반납
+
+```bash
+echo 'import subprocess; subprocess.run("tar -czf /content/segments_pilot.tgz -C /content/drive/MyDrive/marieum-asr-ft/runs segments_pilot", shell=True, check=True); import os; print(os.path.getsize("/content/segments_pilot.tgz"))' | colab --auth=oauth2 exec -s retx
+colab --auth=oauth2 download -s retx /content/segments_pilot.tgz work/segments/segments_pilot.tgz
+colab --auth=oauth2 stop -s retx
+colab --auth=oauth2 sessions
+```
+
+## 5. 합쳐 정렬하고 학습 목록 v3 만들기 (이 PC)
+
+```bash
+mkdir -p work/segments/vm2 && tar -xzf work/segments/segments_pilot.tgz -C work/segments/vm2 --strip-components=1
+python data_prep/align_segments.py --segs work/segments/vm --segs2 work/segments/vm2
+python data_prep/build_train_manifests.py --name v3 --stats work/manifests/train_v3_stats.csv
+```
+
+- 출력 끝에 "남긴 구간의 출처"가 나온다: `p1` yoona-J 길잡이, `p2` 시험 학습 모델 길잡이, `-sandwich` 앞뒤 순서
+- `train_v3.jsonl`, `val_v3.jsonl`을 브라우저로 Drive `data/manifests/`에 올린다
+- 본 학습: `TRAIN_MANIFEST=train_v3.jsonl VAL_MANIFEST=val_v3.jsonl MAX_STEPS=3000 RUN_NAME=ft_v1`
+
+주의: 시험 학습 모델은 1차에서 남은 구간을 학습했다. 그 구간에서는 받아쓰기가 정답을 외워 맞힐 수 있지만, 이미 남은 구간이라 결과는 같다. 새로 건지는 구간(1차에서 버려진 것)은 학습에 쓰이지 않았으므로 외운 것이 아니다.

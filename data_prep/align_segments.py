@@ -80,12 +80,16 @@ def align_path(hyp: str, ref: str):
 
 
 def assign(segs, ref_raw, ref_cap=None):
-    """한 파일의 구간들에 정답 문장을 붙인다. [(seg, text, seg_cer)] (버린 구간은 text=None)."""
+    """한 파일의 구간들에 정답 문장을 붙인다.
+
+    반환: (items, ctx). items[k] = {s, text, cer, a, b, first, last} (정답과 하나도 안 맞으면 text=None)
+    a~b: 붙인 정답 범위 (CER용 글자 위치). first/last: 이 구간 받아쓰기가 실제로 맞힌 첫·마지막 정답 위치"""
     clean = clean_for_training(ref_raw)
     rnorm, rpos = norm_with_map(clean)
     if ref_cap is not None:
         rnorm, rpos = rnorm[:ref_cap], rpos[:ref_cap]
     hyps = [normalize(s["hyp"]) for s in segs]
+    ctx = {"clean": clean, "rnorm": rnorm, "rpos": rpos, "hyps": hyps}
     owner = np.concatenate([np.full(len(h), k) for k, h in enumerate(hyps)]) if hyps else np.array([])
     match = align_path("".join(hyps), rnorm)
     first = {}
@@ -96,26 +100,82 @@ def assign(segs, ref_raw, ref_cap=None):
             first.setdefault(int(k), int(j))
             last[int(k)] = int(j)
     starts = sorted(first.items())
-    out = []
+    items = []
     for k, s in enumerate(segs):
         if k not in first:
-            out.append((s, None, None))
+            items.append({"s": s, "text": None, "cer": None, "a": None, "b": None, "first": None, "last": None})
             continue
         nxt = [st for kk, st in starts if kk > k]
         a = first[k]
-        b = nxt[0] if nxt else last[k] + 1
-        b = max(b, last[k] + 1)
-        span = rnorm[a:b]
-        al = align(hyps[k], span)
-        cer = (al["sub"] + al["del"] + al["ins"]) / max(len(span), 1)
-        text = clean[rpos[a]: rpos[b - 1] + 1].strip(" ,")
-        out.append((s, text if len(span) >= MIN_REF_CHARS else None, round(cer, 3)))
+        b = max(nxt[0] if nxt else last[k] + 1, last[k] + 1)
+        text, cer = span_text(ctx, k, a, b)
+        items.append({"s": s, "text": text, "cer": cer, "a": a, "b": b, "first": first[k], "last": last[k]})
+    return items, ctx
+
+
+def span_text(ctx, k, a, b):
+    """정답 범위 a~b의 학습용 문장과, 구간 k 받아쓰기와의 CER. 너무 짧으면 (None, None)"""
+    if b - a < MIN_REF_CHARS:
+        return None, None
+    span = ctx["rnorm"][a:b]
+    al = align(ctx["hyps"][k], span)
+    cer = (al["sub"] + al["del"] + al["ins"]) / max(len(span), 1)
+    return ctx["clean"][ctx["rpos"][a]: ctx["rpos"][b - 1] + 1].strip(" ,"), round(cer, 3)
+
+
+SANDWICH_TIERS = {"moderate", "severe"}
+CPS_SANDWICH = (1.0, 10.0)  # 순서로 살릴 때는 더 엄격하게: 진행자 말 사이 짧은 틈이 들어오지 않게
+
+
+def judge(assigned, tier, sandwich=True):
+    """assign 결과에 남길지 판단을 붙인다. [{text, cer, keep, how, dur}] (how: match | sandwich)
+
+    sandwich: 받아쓰기가 너무 엉망이라 버려질 구간이라도, 바로 앞뒤 구간이 확실히 맞았다면
+    "앞 구간이 마지막으로 맞힌 글자 다음 ~ 뒤 구간이 처음 맞힌 글자 앞"이 이 구간의 정답이다.
+    이 구간 받아쓰기는 위치 계산에 쓰지 않는다 (엉망인 받아쓰기가 우연히 맞힌 글자로 범위가 어긋나지 않게,
+    11-15 합성 점검에서 이 문제로 0% 정확했다). 앞 구간 범위도 마지막으로 맞힌 글자까지로 줄인다."""
+    items, ctx = assigned
+    out = []
+    for it in items:
+        dur = it["s"]["end"] - it["s"]["start"]
+        ok = False
+        if it["text"] is not None:
+            cps = len(normalize(it["text"])) / max(dur, 1e-6)
+            ok = it["cer"] <= MAX_CER.get(tier, 0.4) and CPS[0] <= cps <= CPS[1]
+        out.append({"text": it["text"], "cer": it["cer"], "keep": ok, "how": "match", "dur": dur})
+    # 중등도·중증에만 쓴다. 합성 점검에서 살린 구간의 약 90%가 정확했지만 진행자 구간의 약 1.2%가 잘못 들어왔다.
+    # 경증은 이미 84%가 남아서 이 위험을 감수할 이유가 없다
+    if sandwich and tier in SANDWICH_TIERS:
+        # 같은 녹음에서 확실히 맞은 구간들의 말 속도. 살릴 구간도 이와 비슷해야 한다
+        # (진행자 말 구간에는 앞 구간이 빠뜨린 2~3글자 틈만 붙어서 말 속도가 터무니없이 느리게 나온다)
+        rates = sorted(len(normalize(r["text"])) / max(r["dur"], 1e-6) for r in out if r["keep"])
+        med = rates[len(rates) // 2] if rates else None
+        for k in range(1, len(out) - 1):
+            if out[k]["keep"] or med is None:
+                continue
+            prev, nxt = out[k - 1], out[k + 1]
+            if not (prev["keep"] and prev["how"] == "match" and nxt["keep"] and nxt["how"] == "match"):
+                continue
+            a, b = items[k - 1]["last"] + 1, items[k + 1]["first"]
+            text, cer = span_text(ctx, k, a, b)
+            if text is None:
+                continue
+            cps = len(normalize(text)) / max(out[k]["dur"], 1e-6)
+            if not (CPS_SANDWICH[0] <= cps <= CPS_SANDWICH[1] and 0.4 * med <= cps <= 2.5 * med):
+                continue
+            out[k].update(text=text, cer=cer, keep=True, how="sandwich")
+            ptext, pcer = span_text(ctx, k - 1, items[k - 1]["a"], a)  # 앞 구간이 이 구간 정답을 먹지 않게
+            if ptext is not None:
+                prev.update(text=ptext, cer=pcer)
     return out
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--segs", required=True)
+    ap.add_argument("--segs2", help="2차 길잡이 폴더 (colab/retranscribe_segments.py 출력). 같은 구간을 다른 모델로 받아쓴 것")
+    ap.add_argument("--no-sandwich", dest="sandwich", action="store_false",
+                    help="앞뒤 구간이 남았을 때 순서로 위치를 정해 살리는 규칙을 끈다")
     ap.add_argument("--refs", default=str(PRIVATE / "train_refs.jsonl"))
     ap.add_argument("--selection", default="work/train_audio/selection.csv")
     ap.add_argument("--audio-root", default="/content/train_audio", help="manifest에 쓸 VM 쪽 오디오 경로")
@@ -134,6 +194,14 @@ def main():
     manifests = defaultdict(list)
     stats = defaultdict(lambda: defaultdict(float))
     seg_cers = defaultdict(list)
+    by_file2 = defaultdict(dict)  # 2차 길잡이 (시험 학습 모델 받아쓰기). 같은 구간 경계, hyp만 다르다
+    if args.segs2:
+        for f in sorted(Path(args.segs2).glob("*.jsonl")):
+            for line in open(f, encoding="utf-8"):
+                s = json.loads(line)
+                by_file2[s["stem"]][(round(s["start"], 2), round(s["end"], 2))] = s
+
+    src_count = defaultdict(lambda: defaultdict(float))
     for stem, segs in sorted(by_file.items()):
         meta, ref = sel[stem], refs[stem]
         segs.sort(key=lambda s: s["start"])
@@ -144,25 +212,33 @@ def main():
         tier = meta["tier"]
         st = stats[meta["speaker"]]
         st["split"], st["tier"] = meta["split"], tier
-        for k, (s, text, cer) in enumerate(assign(segs, ref["text"], cap)):
+
+        passes = [("p1", judge(assign(segs, ref["text"], cap), tier, args.sandwich))]
+        alt = by_file2.get(stem)
+        if alt:
+            segs2 = [alt.get((round(s["start"], 2), round(s["end"], 2)), {**s, "hyp": ""}) for s in segs]
+            passes.append(("p2", judge(assign(segs2, ref["text"], cap), tier, args.sandwich)))
+
+        for k, s in enumerate(segs):
             dur = s["end"] - s["start"]
             st["segs"] += 1
             st["speech_min"] += dur / 60
-            if text is None:
-                st["no_match"] += 1
+            # 길잡이 중 하나라도 위치를 확실히 찾았으면 남긴다. 둘 다면 받아쓰기와 더 잘 맞은 쪽
+            cands = [(name, r[k]) for name, r in passes if r[k]["keep"]]
+            if not cands:
+                st["no_match" if all(r[k]["text"] is None for _, r in passes) else "dropped"] += 1
                 continue
-            seg_cers[meta["speaker"]].append(cer)
-            cps = len(normalize(text)) / max(dur, 1e-6)
-            if cer > MAX_CER.get(tier, 0.4) or not CPS[0] <= cps <= CPS[1]:
-                st["dropped"] += 1
-                continue
+            name, r = min(cands, key=lambda c: (c[1]["how"] != "match", c[1]["cer"]))
+            src = name if r["how"] == "match" else f"{name}-sandwich"
+            seg_cers[meta["speaker"]].append(r["cer"])
             st["kept"] += 1
             st["kept_min"] += dur / 60
+            src_count[tier][src] += dur / 3600
             manifests[meta["split"]].append({
                 "audio_filepath": f"{args.audio_root}/{meta['speaker']}/{stem}.flac",
-                "offset": s["start"], "duration": round(dur, 2), "text": text,
+                "offset": s["start"], "duration": round(dur, 2), "text": r["text"],
                 "target_lang": "ko-KR", "lang": "ko-KR",
-                "speaker": meta["speaker"], "tier": tier, "seg_cer": cer,
+                "speaker": meta["speaker"], "tier": tier, "seg_cer": r["cer"], "src": src,
                 "stem": stem, "seg_idx": k})  # 이어 붙이기용: 같은 파일에서 바로 다음 구간인지 안다
 
     out = Path(args.out)
@@ -193,6 +269,9 @@ def main():
     for (sp, ti), (n, sh, kh, ks) in sorted(tot.items()):
         print(f"{sp:5s} {ti:8s} {n:4d} {sh:7.1f} {kh:6.1f} {ks:7d}")
     print("manifest:", ", ".join(f"{k} {len(v)}개" for k, v in manifests.items()), "->", out)
+    print("남긴 구간의 출처 (시간 h): p1=yoona-J 길잡이, p2=시험 학습 모델 길잡이, -sandwich=앞뒤 순서로 위치를 정함")
+    for t in sorted(src_count):
+        print(f"  {t:8s} " + "  ".join(f"{k} {v:.2f}" for k, v in sorted(src_count[t].items())))
 
 
 if __name__ == "__main__":
