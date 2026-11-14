@@ -47,12 +47,15 @@ bash colab/pack_test.sh
 
 ```bash
 colab --auth=oauth2 new -s nemo --gpu L4
-colab --auth=oauth2 upload -s nemo work/upload/test_v2.tar.part-00 /content/upload/test_v2.tar.part-00
-colab --auth=oauth2 upload -s nemo work/upload/test_v2.tar.part-01 /content/upload/test_v2.tar.part-01
+echo 'import os; os.makedirs("/content/upload", exist_ok=True); print(sorted(os.listdir("/content")))' | colab --auth=oauth2 exec -s nemo
+for f in work/upload/test_v2.tar.part-*; do colab --auth=oauth2 upload -s nemo "$f" "/content/upload/$(basename "$f")" || break; done
+colab --auth=oauth2 ls -s nemo /content/upload
 ```
 
+- **올리기 전에 `/content/upload` 폴더를 먼저 만든다.** 없는 폴더에 올리면 500 오류가 난다 (11-14, 있는 폴더 `/content`에는 같은 방식으로 성공)
+- 조각은 50MB, 4개다 (`part-00`~`part-03`). 마지막 `ls`에 4개가 다 보여야 한다
+- 폴더를 만든 뒤에도 500이 나면 크기 문제다. `colab/pack_test.sh`의 `50M`을 `20M`으로 바꿔 다시 묶고, 올린 조각을 지운 뒤 다시 올린다
 - L4가 안 잡히면(400 오류) `--gpu T4`로 바꾼다. 제로샷 추론은 T4로도 된다
-- 150MB 조각 업로드가 실패하면 `colab/pack_test.sh`의 `150M`을 `50M`으로 바꿔 다시 묶고 올린다
 
 ## 4. Nemotron 제로샷 (처음엔 설치 포함 15~30분)
 
