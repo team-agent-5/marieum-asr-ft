@@ -18,7 +18,7 @@
 | 폴더 | 내용 |
 |---|---|
 | `data_prep/` | `inventory.py` 라벨만 읽어 파일·화자 목록 (`work/inventory/`). `make_listening_set.py` 직접 들어 난이도를 매길 화자별 20초 클립과 채점 페이지 (`work/listen/`) |
-| `splits/` | 화자 분할. `test_v1.csv`는 직접 들어 점수를 매긴 22명 (고정, 바꾸지 않는다) |
+| `splits/` | 화자 분할. `test_v1.csv`는 직접 들어 점수를 매긴 22명 (고정, 바꾸지 않는다). `listen_scores_v1.csv` 307명 난이도 점수. `train_v1` / `val_v1` / `test_v2`는 `data_prep/make_splits.py`로 만든다 |
 | `experiments/` | `results.csv` 실험 하나에 한 줄 |
 | `docs/` | 조사 기록. [`nemotron_finetune_cases.md`](docs/nemotron_finetune_cases.md) Nemotron 3.5 파인튜닝 사례와 우리 설정에 반영할 점 |
 | `work/` | 중간 산출물 (git 밖) |

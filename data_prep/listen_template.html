@@ -72,13 +72,16 @@ audio { height: 32px; width: 300px; max-width: 100%; }
     <input type="file" id="importFile" accept=".csv" hidden>
     <span class="progress" id="progress"></span>
   </div>
-  <div class="help">단축키: <b>j/k</b> 다음·이전 화자 · <b>q</b> 읽기 재생 · <b>w</b> 말하기 재생 · <b>space</b> 멈춤 · <b>0~5</b> 점수 후 다음 화자 · <b>a</b> 음절끊김 · <b>s</b> 단조억양 · <b>d</b> ㅅ→th · <b>f</b> 녹음 문제. 채점은 이 브라우저에 자동 저장되지만, 끝나면 꼭 <b>CSV 저장</b>을 누르세요.</div>
+  <div class="help">단축키: <b>j/k</b> 다음·이전 화자 · <b>q</b> 읽기 재생 · <b>w</b> 말하기 재생 · <b>space</b> 멈춤 · <b>0~5</b> 점수 후 다음 화자 (같은 점수를 다시 누르면 취소) · <b>x</b> 평가불가 · <b>a</b> 음절끊김 · <b>s</b> 단조억양 · <b>d</b> ㅅ→th · <b>f</b> 녹음 문제. 채점은 이 브라우저에 자동 저장되지만, 끝나면 꼭 <b>CSV 저장</b>을 누르세요.</div>
 </header>
 <main id="list"></main>
 <script>
 const ROWS = /*__DATA__*/[];
 const TAGS = [["음절끊김", "a"], ["단조억양", "s"], ["ㅅ→th", "d"], ["녹음문제", "f"]];
 const KEY = "marieum-listen-v1";
+const SCORES = [0, 1, 2, 3, 4, 5, "x"];  // x = 평가불가 (잡음, 진행자 목소리 등)
+const parseScore = t => t === "x" ? "x" : t === "" || t == null ? null : Number(t);
+const color = n => n === "x" ? "var(--muted)" : `var(--s${n})`;
 
 const speakers = [];
 const bySpk = {};
@@ -120,12 +123,12 @@ function render() {
       <div class="who"><b>${s.speaker}</b><div class="meta">${folder}${s.group === "anchor" ? "기준점 후보" : s.group === "reference" ? "테스트" : "학습 후보"}${s.yoonaj_train === "True" ? " · yoona-J 학습" : ""}</div>${ref}</div>
       <div class="clips">${clip("read", "읽기")}${clip("talk", "말하기")}</div>
       <div class="ctrl">
-        <div class="scores">${[0,1,2,3,4,5].map(n => `<button data-score="${n}" class="${v.score === n ? "on" : ""}" style="${v.score === n ? `background:var(--s${n})` : ""}">${n}</button>`).join("")}</div>
+        <div class="scores">${SCORES.map(n => `<button data-score="${n}" title="${n === "x" ? "평가불가 (x)" : n}" class="${v.score === n ? "on" : ""}" style="${v.score === n ? `background:${color(n)}` : ""}">${n === "x" ? "X" : n}</button>`).join("")}</div>
         <div class="tags">${TAGS.map(([t]) => `<label><input type="checkbox" data-tag="${t}" ${v.tags.includes(t) ? "checked" : ""}> ${t}</label>`).join("")}</div>
         <input type="text" class="memo" placeholder="메모" value="${(v.memo || "").replace(/"/g, "&quot;")}">
       </div>`;
     el.addEventListener("click", () => setCur(i, false));
-    el.querySelectorAll("[data-score]").forEach(b => b.addEventListener("click", e => { e.stopPropagation(); setCur(i, false); score(Number(b.dataset.score)); }));
+    el.querySelectorAll("[data-score]").forEach(b => b.addEventListener("click", e => { e.stopPropagation(); setCur(i, false); score(parseScore(b.dataset.score)); }));
     el.querySelectorAll("[data-tag]").forEach(c => c.addEventListener("change", () => toggleTag(s.speaker, c.dataset.tag, c.checked)));
     el.querySelector(".memo").addEventListener("input", e => { st(s.speaker).memo = e.target.value; save(); });
     list.appendChild(el);
@@ -161,15 +164,17 @@ function playRole(role) {
 }
 function score(n) {
   const s = visible[cur]; if (!s) return;
-  const v = st(s.speaker); v.score = n; v.at = new Date().toISOString(); save();
+  const v = st(s.speaker);
+  const clear = v.score === n;  // 같은 점수를 다시 누르면 취소
+  v.score = clear ? null : n; v.at = clear ? "" : new Date().toISOString(); save();
   const el = rowEl(cur);
-  el.classList.add("scored");
+  el.classList.toggle("scored", !clear);
   el.querySelectorAll("[data-score]").forEach(b => {
-    const on = Number(b.dataset.score) === n;
-    b.classList.toggle("on", on); b.style.background = on ? `var(--s${n})` : "";
+    const on = !clear && parseScore(b.dataset.score) === n;
+    b.classList.toggle("on", on); b.style.background = on ? color(n) : "";
   });
   progress();
-  setCur(cur + 1, true);
+  if (!clear) setCur(cur + 1, true);
 }
 function toggleTag(spk, tag, on) {
   const v = st(spk);
@@ -185,7 +190,7 @@ document.addEventListener("keydown", e => {
   else if (k === "q") playRole("read");
   else if (k === "w") playRole("talk");
   else if (k === " ") { e.preventDefault(); stopAll(); }
-  else if (/^[0-5]$/.test(k)) score(Number(k));
+  else if (/^[0-5x]$/.test(k)) score(parseScore(k));
   else {
     const t = TAGS.find(([, key]) => key === k);
     if (t && visible[cur]) {
@@ -225,7 +230,7 @@ $("importFile").addEventListener("change", async e => {
     cells.push(cell);
     const r = Object.fromEntries(cols.map((c, i) => [c, cells[i] ?? ""]));
     if (!bySpk[r.speaker]) continue;
-    state[r.speaker] = { score: r.score === "" ? null : Number(r.score), tags: r.tags ? r.tags.split("|") : [], memo: r.memo, at: r.scored_at };
+    state[r.speaker] = { score: parseScore(r.score), tags: r.tags ? r.tags.split("|") : [], memo: r.memo, at: r.scored_at };
   }
   save(); render();
 });

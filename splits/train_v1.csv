@@ -1,0 +1,269 @@
+﻿speaker,role,folder,score,tier,tags,holdout_stem,minutes
+11-AMG-M56-KK,candidate,11.중풍,0,mild,,,143.1
+11-BBD-M58-KK,candidate,11.중풍,0,mild,,,283.2
+11-BHR-F52-KK,candidate,11.중풍,0,mild,녹음문제,,25.4
+11-CCL-F70-KK,candidate,11.중풍,1,mild,,,313.8
+11-JBH-M41-KK,candidate,11.중풍,0,mild,,,90.3
+11-JJR-F64-KK,candidate,11.중풍,1,mild,진행자음성,,6.0
+11-JJS-M44-KK,candidate,11.중풍,0,mild,,,96.5
+11-JSO-F61-KK,candidate,11.중풍,0,mild,,,45.3
+11-KBJ-M63-KK,candidate,11.중풍,0,mild,,,114.5
+11-KCS-M60-KK,candidate,11.중풍,1,mild,,,6.8
+11-KCS-M62-KK,candidate,11.중풍,0,mild,,,217.5
+11-KES-F57-KK,candidate,11.중풍,1,mild,,,61.3
+11-KJG-M57-KK,candidate,11.중풍,1,mild,,,212.2
+11-KJJ-M63-KK,candidate,11.중풍,0,mild,,,24.1
+11-KJM-M57-KK,candidate,11.중풍,0,mild,,,269.6
+11-KJO-M71-KK,candidate,11.중풍,2,moderate,억양이상,,214.9
+11-KNH-M57-KK,candidate,11.중풍,0,mild,사투리,,290.4
+11-KNH-M58-KK,candidate,11.중풍,0,mild,,,41.2
+11-KSC-M60-KK,candidate,11.중풍,0,mild,,,212.3
+11-KSH-M77-KK,candidate,11.중풍,1,mild,,,127.5
+11-LEH-M58-KK,candidate,11.중풍,0,mild,,,55.6
+11-LES-M67-KK,candidate,11.중풍,0,mild,,,200.7
+11-LGJ-M73-KK,candidate,11.중풍,3,moderate,,,45.1
+11-LGS-F55-KK,candidate,11.중풍,0,mild,,,90.1
+11-LKH-M74-KK,candidate,11.중풍,0,mild,,,70.0
+11-LMS-F56-KK,candidate,11.중풍,3,moderate,음절끊김,,231.0
+11-LMS-F57-KK,candidate,11.중풍,0,mild,,,77.3
+11-OBR-F35-KK,candidate,11.중풍,0,mild,,,73.4
+11-PHR-F52-KK,candidate,11.중풍,0,mild,녹음문제,,1.7
+11-SKS-M56-KK,candidate,11.중풍,2,moderate,단조억양,,136.4
+11-SYH-F53-KK,candidate,11.중풍,0,mild,,,53.0
+11-YHJ-M55-SU,candidate,11.중풍,0,mild,,,334.2
+12-AJH-M63-KK,candidate,12.뇌부상,1,mild,,,194.7
+12-BSJ-F74-KK,candidate,12.뇌부상,0,mild,,,231.3
+12-CBC-M71-KK,candidate,12.뇌부상,3,moderate,,,109.0
+12-CMJ-F76-KK,candidate,12.뇌부상,0,mild,,,403.6
+12-JBH-F61-KK,candidate,12.뇌부상,0,mild,,,247.2
+12-JBH-M61-KK,candidate,12.뇌부상,0,mild,,,240.7
+12-JJP-M77-KK,candidate,12.뇌부상,0,mild,,,249.8
+12-KBJ-F77-KK,candidate,12.뇌부상,1,mild,,,196.3
+12-KCS-M62-KK,candidate,12.뇌부상,0,mild,,,43.1
+12-KIS-F68-KK,candidate,12.뇌부상,0,mild,단조억양,,187.1
+12-KJG-M67-KK,candidate,12.뇌부상,0,mild,,,319.6
+12-KJM-F81-KK,candidate,12.뇌부상,0,mild,,,333.5
+12-KUJ-M67-KK,candidate,12.뇌부상,4,severe,,,206.0
+12-KWY-M64-KK,candidate,12.뇌부상,0,mild,,,288.8
+12-LJR-F74-KK,candidate,12.뇌부상,1,mild,음절끊김,,357.4
+12-LSL-F24-KK,candidate,12.뇌부상,0,mild,,,222.7
+12-LU-M71-KK,candidate,12.뇌부상,0,mild,,,497.1
+12-LYK-F85-KK,candidate,12.뇌부상,2,moderate,,,115.4
+12-PJR-F56-KK,candidate,12.뇌부상,4,severe,,,97.5
+12-PJY-M77-KK,candidate,12.뇌부상,0,mild,,,355.1
+12-PMS-M67-KK,candidate,12.뇌부상,1,mild,,,24.1
+12-SKR-M62-KK,candidate,12.뇌부상,0,mild,,,156.8
+12-YKH-M39-KK,candidate,12.뇌부상,5,severe,,,48.8
+12-YMH-F99-KK,candidate,12.뇌부상,0,mild,,,60.4
+13-CTK-M62-KK,candidate,13.뇌성마비,4,severe,,,158.6
+13-CUJ-F36-KK,candidate,13.뇌성마비,5,severe,,,43.6
+13-CYU-M44-KK,candidate,13.뇌성마비,0,mild,,,156.2
+13-CYW-M44-KK,candidate,13.뇌성마비,0,mild,,,148.3
+13-JMS-M42-SU,candidate,13.뇌성마비,4,severe,녹음문제,,312.5
+13-KYR-F63-KK,candidate,13.뇌성마비,0,mild,,,84.3
+13-LJA-F55-KK,candidate,13.뇌성마비,3,moderate,,,74.5
+13-YUU-M77-KK,candidate,13.뇌성마비,1,mild,단조억양|힘없음,,287.7
+15-ABS-F65-KK,candidate,15.기타 및 복합,0,mild,,,88.0
+15-AHJ-F65-KK,candidate,15.기타 및 복합,0,mild,,,371.8
+15-BCS-F65-KK,candidate,15.기타 및 복합,0,mild,,,296.0
+15-BHS-F71-KK,candidate,15.기타 및 복합,1,mild,힘없음,,39.8
+15-BJC-M53-KK,candidate,15.기타 및 복합,5,severe,,,27.6
+15-BYG-M79-KK,candidate,15.기타 및 복합,4,severe,느림,,86.1
+15-BYJ-F80-KK,candidate,15.기타 및 복합,0,mild,,,227.3
+15-CCN-M69-KK,candidate,15.기타 및 복합,0,mild,,,110.5
+15-CJG-M80-KK,candidate,15.기타 및 복합,1,mild,,,216.2
+15-CJJ-F78-KK,candidate,15.기타 및 복합,0,mild,,,158.9
+15-CMJ-F85-KK,candidate,15.기타 및 복합,2,moderate,,,106.7
+15-CYZ-F65-KK,candidate,15.기타 및 복합,2,moderate,음절끊김|느림,,341.3
+15-EJS-F75-KK,candidate,15.기타 및 복합,1,mild,,,65.5
+15-ENS-F66-KK,candidate,15.기타 및 복합,0,mild,,,443.0
+15-ETS-M67-KK,candidate,15.기타 및 복합,3,moderate,,,53.5
+15-EUS-M24-KK,candidate,15.기타 및 복합,4,severe,단조억양|음절끊김,,20.3
+15-GMG-F75-KK,candidate,15.기타 및 복합,0,mild,,,274.9
+15-HBS-F67-CC,candidate,15.기타 및 복합,1,mild,,,7.9
+15-HCJ-F78-KK,candidate,15.기타 및 복합,2,moderate,음절끊김,,169.1
+15-HJI-M64-KK,candidate,15.기타 및 복합,2,moderate,,,81.2
+15-HSH-F76-KK,candidate,15.기타 및 복합,0,mild,,,185.9
+15-HSH-M72-KK,candidate,15.기타 및 복합,1,mild,떨림,,59.9
+15-HWS-F70-KK,candidate,15.기타 및 복합,0,mild,,,279.8
+15-HYJ-F79-KK,candidate,15.기타 및 복합,2,moderate,음절끊김,,130.5
+15-ISR-F66-KK,candidate,15.기타 및 복합,0,mild,,,266.2
+15-JBH-F79-KK,candidate,15.기타 및 복합,1,mild,,,66.0
+15-JJH-F66-KK,candidate,15.기타 및 복합,0,mild,,,110.4
+15-JJH-F67-KK,candidate,15.기타 및 복합,0,mild,,,111.6
+15-JMK-F47-KK,candidate,15.기타 및 복합,0,mild,,,310.4
+15-JSJ-M31-KK,candidate,15.기타 및 복합,0,mild,,,58.8
+15-JWD-M74-KK,candidate,15.기타 및 복합,1,mild,,,237.2
+15-JYE-F84-KK,candidate,15.기타 및 복합,0,mild,,,132.1
+15-JYO-M80-KK,candidate,15.기타 및 복합,1,mild,,,132.8
+15-JYT-M66-KK,candidate,15.기타 및 복합,0,mild,,,34.5
+15-KDR-F74-KK,candidate,15.기타 및 복합,0,mild,,,445.8
+15-KEH-F20-JL,candidate,15.기타 및 복합,2,moderate,,,213.5
+15-KEH-M74-KK,candidate,15.기타 및 복합,1,mild,사투리,,156.4
+15-KEJ-F67-KK,candidate,15.기타 및 복합,0,mild,,,48.5
+15-KEJ-F68-KK,candidate,15.기타 및 복합,2,moderate,,,86.2
+15-KES-F83-KK,candidate,15.기타 및 복합,1,mild,,,53.5
+15-KJS-F65-KK,candidate,15.기타 및 복합,0,mild,,,208.0
+15-KJS-F80-KK,candidate,15.기타 및 복합,0,mild,,,191.9
+15-KJS-F83-KK,candidate,15.기타 및 복합,1,mild,,,116.9
+15-KKH-F68-KK,candidate,15.기타 및 복합,0,mild,,,176.8
+15-KKJ-F68-KK,candidate,15.기타 및 복합,3,moderate,음절끊김,,75.7
+15-KKS-M67-SU,candidate,15.기타 및 복합,2,moderate,,,91.7
+15-KLY-F68-KK,candidate,15.기타 및 복합,1,mild,,,84.9
+15-KMH-F79-KK,candidate,15.기타 및 복합,1,mild,,,129.7
+15-KSG-M84-KK,candidate,15.기타 및 복합,1,mild,,,77.1
+15-KSH-F59-KK,candidate,15.기타 및 복합,1,mild,음절끊김,,122.1
+15-KSJ-M74-KK,candidate,15.기타 및 복합,0,mild,,,67.5
+15-KTO-F75-KK,candidate,15.기타 및 복합,0,mild,,,244.9
+15-KWC-F74-KK,candidate,15.기타 및 복합,1,mild,,,167.1
+15-KYG-M73-KK,candidate,15.기타 및 복합,0,mild,,,164.0
+15-LBN-F78-KK,candidate,15.기타 및 복합,1,mild,,,159.3
+15-LCK-M67-KK,candidate,15.기타 및 복합,0,mild,,,122.0
+15-LGB-M80-KK,candidate,15.기타 및 복합,1,mild,,,116.0
+15-LGS-F55-KK,candidate,15.기타 및 복합,0,mild,,,192.8
+15-LHJ-F79-KK,candidate,15.기타 및 복합,0,mild,,,136.2
+15-LHK-F78-KK,candidate,15.기타 및 복합,0,mild,,,123.7
+15-LHK-F83-KK,candidate,15.기타 및 복합,3,moderate,음절끊김|단조억양,,557.1
+15-LHS-M99-CC,candidate,15.기타 및 복합,1,mild,,,45.0
+15-LHY-F83-KK,candidate,15.기타 및 복합,3,moderate,,,35.2
+15-LJE-M65-KK,candidate,15.기타 및 복합,0,mild,,,55.1
+15-LJS-F73-KK,candidate,15.기타 및 복합,0,mild,,,42.6
+15-LKE-M65-KK,candidate,15.기타 및 복합,0,mild,,,212.4
+15-LKE-M66-KK,candidate,15.기타 및 복합,0,mild,,,423.5
+15-LKH-M42-KK,candidate,15.기타 및 복합,1,mild,음절끊김,,95.1
+15-LNS-F74-KK,candidate,15.기타 및 복합,2,moderate,,,386.0
+15-LSG-M66-KK,candidate,15.기타 및 복합,0,mild,,,26.1
+15-LSK-M79-KK,candidate,15.기타 및 복합,2,moderate,느림,,112.1
+15-LSR-F66-KK,candidate,15.기타 및 복합,0,mild,,,55.6
+15-LSR-F67-KK,candidate,15.기타 및 복합,0,mild,,,120.2
+15-MCS-F73-KK,candidate,15.기타 및 복합,1,mild,,,148.8
+15-NHJ-M65-KK,candidate,15.기타 및 복합,1,mild,느림,,55.7
+15-NHJ-M67-KK,candidate,15.기타 및 복합,2,moderate,단조억양,,39.2
+15-PYG-M47-SU,candidate,15.기타 및 복합,5,severe,,,3.4
+21-BGW-M56-GS,candidate,21.조음,3,moderate,,,78.0
+21-BSR-M32-GS,candidate,21.조음,1,mild,,,19.5
+21-KBS-M32-JL,candidate,21.조음,3,moderate,,,1.4
+21-KHS-F36-JL,candidate,21.조음,1,mild,,,0.0
+21-KIH-M66-GS,candidate,21.조음,1,mild,,,102.9
+21-KJH-M29-CC,candidate,21.조음,1,mild,,,407.3
+21-LYJ-F27-SU,candidate,21.조음,4,severe,,,199.8
+25-KSM-M45-JL,candidate,25.언어+뇌신경장애,1,mild,,,270.6
+25-KWD-M54-SU,candidate,25.언어+뇌신경장애,0,mild,,,804.3
+25-KYG-M73-KK,candidate,25.언어+뇌신경장애,0,mild,,,143.5
+25-KYO-M72-SU,candidate,25.언어+뇌신경장애,0,mild,,,96.1
+25-LBH-F68-GS,candidate,25.언어+뇌신경장애,0,mild,,,102.4
+25-LBS-M73-JL,candidate,25.언어+뇌신경장애,0,mild,,,125.6
+25-LCB-M80-JL,candidate,25.언어+뇌신경장애,0,mild,,,131.0
+25-LHH-M72-KK,candidate,25.언어+뇌신경장애,0,mild,,,190.6
+25-LJI-F66-KK,candidate,25.언어+뇌신경장애,0,mild,,,149.5
+25-LMB-F72-GS,candidate,25.언어+뇌신경장애,2,moderate,,,326.0
+25-LTY-F26-KK,candidate,25.언어+뇌신경장애,0,mild,,,305.8
+25-NSO-F74-GS,candidate,25.언어+뇌신경장애,3,moderate,,,187.5
+25-OSJ-F78-JL,candidate,25.언어+뇌신경장애,1,mild,,,304.8
+25-OYS-M30-KK,candidate,25.언어+뇌신경장애,1,mild,,,203.5
+25-PYS-F83-JL,candidate,25.언어+뇌신경장애,0,mild,,,56.1
+25-SJH-M17-GS,candidate,25.언어+뇌신경장애,1,mild,,,250.8
+25-SJS-F70-GS,candidate,25.언어+뇌신경장애,2,moderate,음절끊김,,186.9
+25-SMH-M88-KK,candidate,25.언어+뇌신경장애,4,severe,,,104.3
+25-SSG-F26-KK,candidate,25.언어+뇌신경장애,4,severe,,,55.9
+25-YJA-F29-KK,candidate,25.언어+뇌신경장애,2,moderate,,,150.2
+25-YJE-F27-SU,candidate,25.언어+뇌신경장애,3,moderate,,,207.4
+25-YJS-F25-JL,candidate,25.언어+뇌신경장애,0,mild,,,13.7
+25-YJS-F52-JL,candidate,25.언어+뇌신경장애,0,mild,,,90.5
+25-YKS-F81-JL,candidate,25.언어+뇌신경장애,0,mild,,,56.6
+25-YWS-M80-JL,candidate,25.언어+뇌신경장애,1,mild,,,178.4
+26-BDI-F51-KK,candidate,26.청각+뇌신경장애(1),1,mild,,,202.9
+26-CYH-M77-JL,candidate,26.청각+뇌신경장애(1),1,mild,음절끊김,,40.8
+26-JCJ-F77-KK,candidate,26.청각+뇌신경장애(1),1,mild,힘없음,,114.0
+26-JDS-F68-SU,candidate,26.청각+뇌신경장애(1),0,mild,,,115.8
+26-JSH-M20-GS,candidate,26.청각+뇌신경장애(1),1,mild,,,772.2
+26-JWS-M38-SU,candidate,26.청각+뇌신경장애(1),1,mild,,,175.6
+26-KDS-F28-JL,candidate,26.청각+뇌신경장애(1),4,severe,,,235.2
+26-KGC-M84-JL,candidate,26.청각+뇌신경장애(1),2,moderate,,,188.9
+26-KHJ-F33-SU,candidate,26.청각+뇌신경장애(1),0,mild,,,388.9
+26-KJO-M61-KK,candidate,26.청각+뇌신경장애(1),0,mild,,,416.8
+26-KJS-M54-SU,candidate,26.청각+뇌신경장애(1),0,mild,,,229.0
+26-KMY-F35-GS,candidate,26.청각+뇌신경장애(1),4,severe,,,332.4
+26-KSD-M82-KK,candidate,26.청각+뇌신경장애(1),1,mild,,,141.9
+26-KSH-M28-GS,candidate,26.청각+뇌신경장애(1),4,severe,,,406.7
+26-LJH-F28-SU,candidate,26.청각+뇌신경장애(1),1,mild,,,560.4
+26-LJY-F26-JL,candidate,26.청각+뇌신경장애(1),0,mild,,,172.7
+26-LKS-F63-SU,candidate,26.청각+뇌신경장애(1),4,severe,,,130.7
+26-LMS-M73-SU,candidate,26.청각+뇌신경장애(1),1,mild,,,25.9
+26-LSI-M76-KK,candidate,26.청각+뇌신경장애(1),0,mild,,,48.4
+26-MYO-F41-SU,candidate,26.청각+뇌신경장애(1),0,mild,,,895.8
+26-PJC-M72-CC,candidate,26.청각+뇌신경장애(1),0,mild,,,135.4
+26-PJM-F38-CC,candidate,26.청각+뇌신경장애(1),0,mild,,,426.8
+26-PSM-F20-JL,candidate,26.청각+뇌신경장애(1),3,moderate,,,292.3
+26-PUJ-M64-KK,candidate,26.청각+뇌신경장애(1),0,mild,,,202.2
+26-PYH-F78-SU,candidate,26.청각+뇌신경장애(1),1,mild,,,56.1
+26-SJH-M63-KK,candidate,26.청각+뇌신경장애(1),1,mild,,,284.7
+26-SJY-F19-KK,candidate,26.청각+뇌신경장애(1),0,mild,,,249.7
+26-SJY-F25-KK,candidate,26.청각+뇌신경장애(1),3,moderate,,,205.2
+26-YCS-M84-SU,candidate,26.청각+뇌신경장애(1),0,mild,,,202.6
+26-YDE-F71-KK,candidate,26.청각+뇌신경장애(1),2,moderate,단조억양,,143.9
+26-YHY-F28-SU,candidate,26.청각+뇌신경장애(1),5,severe,,,55.9
+26-YJH-M57-SU,candidate,26.청각+뇌신경장애(1),1,mild,,,769.2
+28-BJJ-F81-KK,candidate,28.감음신경성,0,mild,,,244.0
+28-CBC-M20-KK,candidate,28.감음신경성,3,moderate,,,58.1
+28-COL-F74-KK,candidate,28.감음신경성,0,mild,,,397.1
+28-CSI-M53-KK,candidate,28.감음신경성,0,mild,,,240.0
+28-CSY-F19-KK,candidate,28.감음신경성,0,mild,,,52.8
+28-HBM-M20-KK,candidate,28.감음신경성,2,moderate,,,96.6
+28-IBL-F29-KK,candidate,28.감음신경성,0,mild,,,202.1
+28-IDH-F27-JL,candidate,28.감음신경성,0,mild,,,161.1
+28-IHM-F26-KK,candidate,28.감음신경성,2,moderate,,,218.8
+28-JHH-M73-KK,candidate,28.감음신경성,2,moderate,,,54.4
+28-KBS-F60-KK,candidate,28.감음신경성,0,mild,,,151.2
+28-KHY-F79-KK,candidate,28.감음신경성,0,mild,사투리,,94.5
+28-KJH-M99-SU,candidate,28.감음신경성,1,mild,ㅅ→th,,233.0
+28-KMJ-F19-KK,candidate,28.감음신경성,4,severe,,,181.6
+28-KSY-F49-KK,candidate,28.감음신경성,0,mild,,,160.6
+28-LMJ-F55-KK,candidate,28.감음신경성,0,mild,,,962.3
+28-LTS-F62-KK,candidate,28.감음신경성,0,mild,,,162.6
+28-MGS-F83-KK,candidate,28.감음신경성,0,mild,,,106.8
+28-MHJ-F99-GS,candidate,28.감음신경성,5,severe,,,48.0
+28-OGJ-F83-KK,candidate,28.감음신경성,2,moderate,,,226.5
+28-PCS-M82-KK,candidate,28.감음신경성,3,moderate,,,49.0
+28-PKS-M99-SU,candidate,28.감음신경성,3,moderate,힘없음,,60.3
+28-PSH-M99-SU,candidate,28.감음신경성,4,severe,,,13.1
+28-PYS-F99-SU,candidate,28.감음신경성,5,severe,음절끊김,,182.7
+28-RJA-F99-SU,candidate,28.감음신경성,1,mild,,,143.4
+28-SHJ-F39-GS,candidate,28.감음신경성,4,severe,,,96.0
+28-SJY-F75-KK,candidate,28.감음신경성,3,moderate,,,81.9
+28-SSH-M99-SU,candidate,28.감음신경성,1,mild,,,63.1
+28-SSM-M82-CC,candidate,28.감음신경성,1,mild,ㅅ→th,,40.7
+28-YJY-F19-KK,candidate,28.감음신경성,5,severe,,,48.1
+32-HKW-M64-SU,candidate,32.감음신경성,4,severe,,,10.0
+32-JKT-M60-GW,candidate,32.감음신경성,0,mild,,,44.6
+21-KMH-M26-GS,seen_test,21.조음,5,severe,,ID-02-21-N-KMH-02-03-M-26-GS2,121.7
+21-LJG-M44-KK,seen_test,21.조음,5,severe,,ID-02-21-N-LJG-52-04-M-44-KK,27.0
+28-KJM-M99-SU,seen_test,28.감음신경성,5,severe,,ID-02-28-N-KJM-02-01-M-99-SU1,289.7
+26-BDS-M25-KK,seen_test,26.청각+뇌신경장애(1),4,severe,,ID-02-26-N-BDS-02-01-M-25-KK,353.1
+26-BJS-F32-JJ,seen_test,26.청각+뇌신경장애(1),3,moderate,,ID-02-26-N-BJS-02-01-F-32-JJ,436.4
+26-BHL-F25-SU,seen_test,26.청각+뇌신경장애(1),3,moderate,,ID-02-26-N-BHL-02-01-F-25-SU,238.0
+25-OTK-M30-SU,seen_test,25.언어+뇌신경장애,0,mild,,ID-02-25-N-OTK-02-01-M-30-SU,225.0
+27-HCJ-F21-SU,anchor,27.전음성(1),0,anchor,,,55.6
+27-HSH-F22-GS,anchor,27.전음성(1),0,anchor,,,185.7
+27-HSH-F26-SU,anchor,27.전음성(1),0,anchor,,,575.0
+27-JEY-F44-KK,anchor,27.전음성(1),0,anchor,,,739.0
+27-JHR-F35-KK,anchor,27.전음성(1),0,anchor,,,312.2
+27-KMJ-F35-SU,anchor,27.전음성(2),0,anchor,,,396.0
+27-KSH-F46-KK,anchor,27.전음성(2),0,anchor,,,201.4
+27-KYJ-F19-KK,anchor,27.전음성(2),0,anchor,,,689.6
+27-LSI-F19-GS,anchor,27.전음성(2),0,anchor,,,27.2
+27-LYK-M55-SU,anchor,27.전음성(3),0,anchor,,,249.5
+27-PSA-F45-KK,anchor,27.전음성(3),0,anchor,,,630.1
+27-YGA-F58-KK,anchor,27.전음성(3),0,anchor,,,136.3
+27-YKA-F58-KK,anchor,27.전음성(3),1,anchor,,,74.6
+27-YSP-M39-SU,anchor,27.전음성(3),0,anchor,,,188.6
+31-CHS-M27-KK,anchor,31.기능성,0,anchor,,,481.0
+31-JMJ-F28-KK,anchor,31.기능성,0,anchor,,,262.5
+31-JSM-M22-SU,anchor,31.기능성,0,anchor,,,566.6
+31-KEJ-F32-KK,anchor,31.기능성,0,anchor,,,306.2
+31-KMJ-M25-KK,anchor,31.기능성,0,anchor,,,177.8
+31-KYJ-M27-KK,anchor,31.기능성,0,anchor,,,357.1
+31-LJS-M34-KK,anchor,31.기능성,0,anchor,,,492.0
+31-PNH-M24-KK,anchor,31.기능성,0,anchor,,,5.6
+31-SHB-F29-SU,anchor,31.기능성,0,anchor,,,27.1
+31-SHJ-M28-KK,anchor,31.기능성,0,anchor,,,429.7
