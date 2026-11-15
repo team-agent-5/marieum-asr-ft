@@ -87,6 +87,9 @@ def main():
                                ensure_ascii=False) + "\n")
     audio_min = sum(r["duration"] for r in rows) / 60
 
+    # T4(무료)는 bf16을 지원하지 않는다 (11-16 CU가 바닥나 A100·L4를 못 받음). 이전 평가(A100)는 bf16
+    import torch
+    amp_dtype = os.environ.get("AMP_DTYPE") or ("bfloat16" if torch.cuda.get_device_capability()[0] >= 8 else "float16")
     script = NEMO / "examples/asr/asr_cache_aware_streaming/speech_to_text_cache_aware_streaming_infer.py"
     t1 = time.time()
     sh([sys.executable, str(script),
@@ -94,7 +97,7 @@ def main():
         f"dataset_manifest={man}", f"output_path={OUT}",
         f"att_context_size={ATT_CONTEXT}", f"batch_size={BATCH}", "decoder_type=rnnt",
         "pad_and_drop_preencoded=true", "target_lang=ko-KR", "strip_lang_tags=true",
-        "amp=true", "amp_dtype=bfloat16", "cuda=0"], log=log)
+        "amp=true", f"amp_dtype={amp_dtype}", "cuda=0"], log=log)
     infer_s = time.time() - t1
 
     outs = sorted(OUT.glob("streaming_out_*.json"))
@@ -108,7 +111,7 @@ def main():
             f.write(json.dumps({"speaker": r["speaker"], "text": p}, ensure_ascii=False) + "\n")
     outs[-1].unlink()  # 자리표시 정답이 섞인 파일은 지운다
 
-    info = {"model": MODEL, "att_context_size": ATT_CONTEXT, "files": len(rows), "audio_min": round(audio_min, 1),
+    info = {"model": MODEL, "att_context_size": ATT_CONTEXT, "amp_dtype": amp_dtype, "files": len(rows), "audio_min": round(audio_min, 1),
             "infer_s": round(infer_s), "rtf": round(infer_s / (audio_min * 60), 4), "total_s": round(time.time() - t0)}
     json.dump(info, open(OUT / "run_info.json", "w"), indent=1)
     print(json.dumps(info, ensure_ascii=False))

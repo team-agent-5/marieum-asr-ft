@@ -253,6 +253,8 @@ colab --auth=oauth2 sessions
 
 학습이 끝난 뒤 평가 중에 VM이 회수돼도 `.nemo`는 Drive에 있다. 새 VM에서 평가만 한다. 추론은 GPU를 다 쓰지 않으므로 **L4로 충분하다** (A100보다 CU가 훨씬 적게 든다). 추론은 약 30분.
 
+- **CU가 0이면 A100·L4를 못 받는다** (`colab --auth=oauth2 usage`로 잔액 확인). 무료 T4로도 평가할 수 있다: `--gpu T4`. T4는 bf16이 없어서 스크립트가 fp16으로 바꿔 돈다 (`run_info.json`의 `amp_dtype`). 추론 1~1.5시간 예상
+
 ```bash
 colab --auth=oauth2 new -s evalft --gpu L4      # 사용자
 colab --auth=oauth2 drivemount -s evalft        # 사용자
