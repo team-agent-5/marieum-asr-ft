@@ -282,7 +282,7 @@ echo 'import subprocess; p=subprocess.run("python /content/retranscribe_segments
 ```
 
 - 처음 15~20분: 학습 녹음 풀기, NeMo 설치, 구간 자르기 (약 9,200개)
-- 받아쓰기: A100 약 1시간 (예상)
+- 받아쓰기: A100 약 1시간 (예상). 11-15 실제로는 전체 9분 (녹음·NeMo가 VM에 남아 있지 않았는데도)
 - CLI가 `TimeoutError`로 끝나도 다시 보내지 않는다
 
 ## 3. 진행 확인 (커널을 쓰지 않는 명령만)
@@ -314,5 +314,6 @@ python data_prep/build_train_manifests.py --name v3 --stats work/manifests/train
 - 출력 끝에 "남긴 구간의 출처"가 나온다: `p1` yoona-J 길잡이, `p2` 시험 학습 모델 길잡이, `-sandwich` 앞뒤 순서
 - `train_v3.jsonl`, `val_v3.jsonl`을 브라우저로 Drive `data/manifests/`에 올린다
 - 본 학습: `TRAIN_MANIFEST=train_v3.jsonl VAL_MANIFEST=val_v3.jsonl MAX_STEPS=3000 RUN_NAME=ft_v1`
+- 11-15 결과: 9,233구간 중 빈 출력 1,418개. 정렬 구간 train 37.2h → 38.7h (중등도 5.76 → 6.68h, 중증 3.42 → 4.03h). 두 길잡이가 모두 남긴 구간은 자른 위치가 중등도 89%, 중증 79% 같다(차이 20% 미만). 시험 모델 길잡이로 새로 남긴 중증 구간의 받아쓰기-정답 CER 중앙값 0.14. 학습 목록 반복 후 49.0h → 51.9h (중증 10.0 → 11.5h, 중등도 11.5 → 12.9h). 화자당 20분 상한 때문에 늘어난 만큼 다 들어가지는 않는다
 
 주의: 시험 학습 모델은 1차에서 남은 구간을 학습했다. 그 구간에서는 받아쓰기가 정답을 외워 맞힐 수 있지만, 이미 남은 구간이라 결과는 같다. 새로 건지는 구간(1차에서 버려진 것)은 학습에 쓰이지 않았으므로 외운 것이 아니다.
