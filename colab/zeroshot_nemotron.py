@@ -15,6 +15,7 @@
 import glob
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -111,6 +112,14 @@ def main():
             "infer_s": round(infer_s), "rtf": round(infer_s / (audio_min * 60), 4), "total_s": round(time.time() - t0)}
     json.dump(info, open(OUT / "run_info.json", "w"), indent=1)
     print(json.dumps(info, ensure_ascii=False))
+    # 11-16 평가 끝무렵 VM이 회수돼 결과를 잃었다. Drive가 연결돼 있으면 바로 복사해 둔다
+    drive = Path("/content/drive/MyDrive/marieum-asr-ft")
+    if drive.exists():
+        keep = drive / "runs/eval" / OUT.name
+        keep.mkdir(parents=True, exist_ok=True)
+        for name in ("hyps.jsonl", "run_info.json"):
+            shutil.copy(OUT / name, keep / name)
+        print(f"Drive에도 저장: {keep}")
     print(f"완료. 내려받기: colab download -s nemo {OUT}/hyps.jsonl ./work/eval/{OUT.name}/hyps.jsonl")
 
 

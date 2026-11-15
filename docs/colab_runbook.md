@@ -249,6 +249,17 @@ colab --auth=oauth2 stop -s train
 colab --auth=oauth2 sessions
 ```
 
+## 4-1. 평가만 다시 (VM이 회수됐을 때)
+
+학습이 끝난 뒤 평가 중에 VM이 회수돼도 `.nemo`는 Drive에 있다. 새 VM에서 평가만 한다. 추론은 GPU를 다 쓰지 않으므로 **L4로 충분하다** (A100보다 CU가 훨씬 적게 든다). 추론은 약 30분.
+
+```bash
+colab --auth=oauth2 new -s evalft --gpu L4      # 사용자
+colab --auth=oauth2 drivemount -s evalft        # 사용자
+```
+
+이후는 4단계와 같다. 세션 이름만 `evalft`로 바꾼다. 결과는 `/content/out/<OUT_NAME>/`과 Drive `runs/eval/<OUT_NAME>/` 두 곳에 저장된다 (11-16부터). 내려받기 전에 VM이 또 회수되면 Drive에서 브라우저로 받는다.
+
 ## 5. 채점 (이 PC)
 
 ```bash
