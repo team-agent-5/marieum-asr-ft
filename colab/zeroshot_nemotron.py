@@ -8,8 +8,11 @@
   /content/out/nemotron_zs_<지연>/hyps.jsonl   {"speaker", "text"}  -> 이 PC로 내려받아 eval/score.py로 채점
   /content/out/nemotron_zs_<지연>/run.log       NeMo 로그, 처리 시간
 
-설정은 아래 상수로 바꾼다 (colab exec는 인자를 받지 않는다).
+설정은 환경변수로 바꾼다 (colab exec는 인자를 받지 않는다).
 처음 실행하면 NeMo main 브랜치를 설치한다 (5~10분). 같은 세션에서 다시 돌리면 건너뛴다.
+
+Colab 밖 Linux GPU 서버(NCP 등)에서는 WORKDIR로 작업 폴더를 바꾼다 (docs/colab_runbook.md "NCP 서버에서 평가")
+    WORKDIR=~/asr-eval MODEL=~/asr-eval/ft_v1.nemo OUT_NAME=ft_v1_320ms python zeroshot_nemotron.py
 """
 
 import glob
@@ -22,14 +25,15 @@ import time
 from pathlib import Path
 
 # 파인튜닝한 모델을 평가할 때: MODEL=/content/drive/.../checkpoints/xxx.nemo  OUT_NAME=ft_v1_320ms
-MODEL = os.environ.get("MODEL", "nvidia/nemotron-3.5-asr-streaming-0.6b")
+MODEL = os.path.expanduser(os.environ.get("MODEL", "nvidia/nemotron-3.5-asr-streaming-0.6b"))
 ATT_CONTEXT = os.environ.get("ATT_CONTEXT", "[56,3]")  # 320ms. [56,0]=80ms, [56,13]=1.12s
 BATCH = 4
-UPLOAD = Path("/content/upload")
-DATA = Path("/content/test_v2")
-NEMO = Path("/content/NeMo")
+WORK = Path(os.path.expanduser(os.environ.get("WORKDIR", "/content")))
+UPLOAD = WORK / "upload"
+DATA = WORK / "test_v2"
+NEMO = WORK / "NeMo"
 TAG = {"[56,0]": "80ms", "[56,1]": "160ms", "[56,3]": "320ms", "[56,6]": "560ms", "[56,13]": "1120ms"}
-OUT = Path("/content/out") / os.environ.get("OUT_NAME", f"nemotron_zs_{TAG.get(ATT_CONTEXT, 'ctx')}")
+OUT = WORK / "out" / os.environ.get("OUT_NAME", f"nemotron_zs_{TAG.get(ATT_CONTEXT, 'ctx')}")
 
 
 def sh(cmd, log=None, **kw):
@@ -63,7 +67,8 @@ def install():
             return
     except ImportError:
         pass
-    sh(["apt-get", "-qq", "install", "-y", "libsndfile1", "ffmpeg"])
+    if not shutil.which("ffmpeg"):  # Colab은 root. 서버에서는 미리 sudo apt-get install libsndfile1 ffmpeg
+        sh(["apt-get", "-qq", "install", "-y", "libsndfile1", "ffmpeg"])
     if not NEMO.exists():
         sh(["git", "clone", "--depth", "1", "https://github.com/NVIDIA/NeMo.git", str(NEMO)])
     sh([sys.executable, "-m", "pip", "install", "-q", "Cython", "packaging"])

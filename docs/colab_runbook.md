@@ -262,6 +262,44 @@ colab --auth=oauth2 drivemount -s evalft        # 사용자
 
 이후는 4단계와 같다. 세션 이름만 `evalft`로 바꾼다. 결과는 `/content/out/<OUT_NAME>/`과 Drive `runs/eval/<OUT_NAME>/` 두 곳에 저장된다 (11-16부터). 내려받기 전에 VM이 또 회수되면 Drive에서 브라우저로 받는다.
 
+## 4-2. NCP 서버에서 평가 (Colab CU가 없을 때)
+
+NCP GPU 서버(`gp1l4-g3`, L4 24GB)에서 같은 스크립트로 평가한다. L4는 bf16을 지원하므로 A100 평가와 조건이 같다. 평가는 학습이 아니라서 서빙 GPU를 써도 된다 (단, 시연 서버가 돌고 있으면 끝난 뒤에).
+
+**서버에 필요한 것:** Ubuntu, NVIDIA 드라이버(`nvidia-smi`가 된다), Python 3.10 이상, 디스크 여유 15GB
+
+**1. 파일 옮기기 (사용자)**
+- Drive `marieum-asr-ft/ckpt/ft_v1/v1/checkpoints/ft_v1.nemo`(약 2.4GB)를 브라우저로 이 PC에 받는다
+- 이 PC에서 서버로 보낸다. 정답 파일(refs)은 보내지 않는다
+
+```bash
+ssh <서버> "mkdir -p ~/asr-eval/upload"
+scp work/upload/test_v2.tar.part-* <서버>:~/asr-eval/upload/
+scp colab/zeroshot_nemotron.py <ft_v1.nemo 받은 경로> <서버>:~/asr-eval/
+```
+
+**2. 서버에서 실행**
+
+```bash
+sudo apt-get install -y libsndfile1 ffmpeg git python3-venv
+python3 -m venv ~/asr-eval/venv && source ~/asr-eval/venv/bin/activate
+cd ~/asr-eval && WORKDIR=~/asr-eval MODEL=~/asr-eval/ft_v1.nemo OUT_NAME=ft_v1_320ms nohup python zeroshot_nemotron.py > run_ft_v1.out 2>&1 &
+tail -f run_ft_v1.out
+```
+
+- 처음 10~20분은 NeMo 설치다. 추론은 약 30~40분
+- 서버는 Colab과 달리 `nohup`으로 띄워도 회수되지 않는다. ssh가 끊겨도 계속 돈다
+
+**3. 결과 받기와 정리**
+
+```bash
+mkdir -p work/eval/ft_v1_320ms
+scp <서버>:~/asr-eval/out/ft_v1_320ms/hyps.jsonl <서버>:~/asr-eval/out/ft_v1_320ms/run_info.json work/eval/ft_v1_320ms/
+ssh <서버> "rm -rf ~/asr-eval/test_v2 ~/asr-eval/upload"
+```
+
+- 평가가 끝나면 서버의 테스트 음성은 지운다 (AI Hub 데이터는 필요한 곳에만 둔다). 모델과 NeMo는 서빙에 다시 쓰므로 남겨도 된다
+
 ## 5. 채점 (이 PC)
 
 ```bash
