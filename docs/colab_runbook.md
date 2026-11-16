@@ -558,3 +558,72 @@ python eval/audit_colab_run.py --expect-head <커밋>
 for d in ft_v3_320ms ft_v3_1120ms; do python eval/score.py --hyps work/eval/$d/hyps.jsonl --out work/eval/$d; done
 python eval/unseen_text.py --runs yoonaj_vad ft_v2_320ms ft_v3_320ms ft_v3_1120ms
 ```
+
+## ft_v3 이어 하기 (11-16 밤, 연결이 끊겨도 학습이 계속되게)
+
+세 번째 시도는 학습 53분(step 800 저장 중)에 exec 연결이 끊겨(`RuntimeError: Connection was lost.`) 멈췄다. 학습이 커널의 자식이라 같이 멈춘 것으로 본다.
+Drive에 step 700 체크포인트(`ft_v3--val_wer=0.4000-epoch=6-last.ckpt`)와 가장 좋은 체크포인트(epoch 3, val_wer 0.368)가 있다.
+`train_nemotron.py`는 같은 이름(ft_v3)이면 마지막 체크포인트에서 이어 간다 (`-unfinished` 표시가 붙은 step 800은 건너뛴다). 남은 1300 step, 약 1시간 45분 + 평가 40분.
+
+바꾼 것:
+- **`colab/job.py`:** 작업을 커널과 떼어 새 세션으로 띄운다 (`start`, 한 번만 시작된다). 커널은 `wait`로 기다리기만 한다. exec 연결이 끊겨도 학습은 계속되고, `wait`는 몇 번을 다시 보내도 안전하다
+- **로그에 문장을 찍지 않는다** (`model.log_prediction=false`). 예전 학습 로그에는 검증 정답·예측 문장이 들어 있었다
+- 평가는 `ft_v3.nemo`를 정확히 고른다
+
+### 1. VM과 Drive (사용자)
+
+```bash
+colab --auth=oauth2 new -s ftv3 --gpu A100
+colab --auth=oauth2 drivemount -s ftv3
+```
+
+### 2. 준비 (다시 보내도 되는 명령)
+
+```bash
+colab --auth=oauth2 usage
+echo 'import os; os.makedirs("/content/upload", exist_ok=True); print("ok")' | timeout 120 colab --auth=oauth2 exec -s ftv3
+for f in work/upload/test_v2.tar.part-*; do timeout 900 colab --auth=oauth2 upload -s ftv3 "$f" "/content/upload/$(basename "$f")" || break; done
+for s in train_nemotron.py zeroshot_nemotron.py run_ft_v3.py job.py; do timeout 120 colab --auth=oauth2 upload -s ftv3 colab/$s /content/$s; done
+timeout 120 colab --auth=oauth2 ls -s ftv3 /content/upload
+timeout 120 colab --auth=oauth2 ls -s ftv3 /content
+timeout 120 colab --auth=oauth2 ls -s ftv3 /content/drive/MyDrive/marieum-asr-ft/ckpt/ft_v3/v1/checkpoints
+```
+
+- 실패하면 `status`로 세션을 보고 같은 명령을 한 번 더. 두 번째도 실패하면 멈추고 보고
+- 확인할 것: `test_v2.tar.part-00`~`03`, 스크립트 4개, Drive에 `ft_v3--val_wer=0.4000-epoch=6-last.ckpt`
+
+### 3. 시작 (한 번) 과 기다리기
+
+```bash
+echo 'import subprocess; p=subprocess.run("python /content/job.py start run_ft_v3.py", shell=True, capture_output=True, text=True); print(p.stdout, p.stderr)' | timeout 120 colab --auth=oauth2 exec -s ftv3
+echo 'import subprocess; p=subprocess.run("python /content/job.py wait", shell=True, capture_output=True, text=True); print(p.stdout[-3000:], p.stderr[-2000:])' | colab --auth=oauth2 exec -s ftv3
+```
+
+- 첫 명령은 `시작, pid ...`를 보여야 한다. 다시 보내도 `이미 시작됨`만 나온다
+- 둘째 명령(`wait`)은 백그라운드로 돌린다. 30분마다 TimeoutError로 돌아와도 VM 안에서는 계속 기다린다. 다시 보내지 않는다
+
+### 4. 진행 확인 (30분마다, exec 없이)
+
+```bash
+colab --auth=oauth2 status -s ftv3
+colab --auth=oauth2 download -s ftv3 /content/drive/MyDrive/marieum-asr-ft/runs/train/ft_v3.log work/train_ft_v3.log && grep -a -o "Epoch [0-9]*, global step [0-9]*: 'val_wer' [a-z ]*[0-9.]*" work/train_ft_v3.log | tail -3
+colab --auth=oauth2 ls -s ftv3 /content/drive/MyDrive/marieum-asr-ft/ckpt/ft_v3/v1/checkpoints
+colab --auth=oauth2 ls -s ftv3 /content/drive/MyDrive/marieum-asr-ft/runs/eval
+colab --auth=oauth2 usage
+```
+
+- 로그는 위 `grep`으로 step과 val_wer만 본다 (`tail`로 통째로 보지 않는다. 예전 부분에는 문장이 들어 있다)
+- **연결이 끊기거나 `wait`가 오류로 끝나면:** `status`를 본다
+  - `BUSY`면 그대로 둔다
+  - `IDLE`이면 `echo 'import subprocess; p=subprocess.run("python /content/job.py peek", shell=True, capture_output=True, text=True); print(p.stdout[-1500:])' | timeout 120 colab --auth=oauth2 exec -s ftv3`로 본다. `도는 중`이면 3단계의 `wait` 명령을 다시 백그라운드로 보낸다. `끝남`이면 5단계로 간다
+  - 세션이 없으면 멈추고 보고한다 (Drive 체크포인트에서 다시 이어 갈 수 있다)
+
+### 5. 결과 받기와 반납
+
+```bash
+for d in ft_v3_320ms ft_v3_1120ms; do mkdir -p work/eval/$d; for f in hyps.jsonl run_info.json; do colab --auth=oauth2 download -s ftv3 /content/out/$d/$f work/eval/$d/$f; done; done
+colab --auth=oauth2 ls -s ftv3 /content/drive/MyDrive/marieum-asr-ft/ckpt/ft_v3/v1/checkpoints
+colab --auth=oauth2 stop -s ftv3
+colab --auth=oauth2 sessions
+colab --auth=oauth2 usage
+```

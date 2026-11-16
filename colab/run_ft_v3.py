@@ -7,13 +7,12 @@
 2. 평가: 지연 0.32초 (ft_v2 EXP-008과 비교) -> out/ft_v3_320ms
 3. 평가: 지연 1.12초 (ft_v2 EXP-009와 비교) -> out/ft_v3_1120ms
 
-ft_v2 모델(ckpt/ft_v2/)은 건드리지 않는다. ft_v3는 ckpt/ft_v3/에 따로 저장된다.
+ft_v2 모델(ckpt/ft_v2/)은 건드리지 않는다. 다시 돌리면 ckpt/ft_v3/의 마지막 체크포인트에서 이어 간다. ft_v3는 ckpt/ft_v3/에 따로 저장된다.
 학습이 실패하면 평가는 하지 않는다. 평가 결과는 zeroshot_nemotron.py가 Drive runs/eval/에도 복사한다.
 전제: Drive 연결, Drive data/manifests/train_v5.jsonl·val_v3.jsonl, /content/upload/test_v2.tar.part-*,
       /content/train_nemotron.py, /content/zeroshot_nemotron.py
 """
 
-import glob
 import os
 import subprocess
 import time
@@ -36,8 +35,9 @@ for need in (FT2, f"{DRIVE}/data/manifests/train_v5.jsonl"):
         raise SystemExit(f"{need}가 없다. drivemount와 train_v5.jsonl 업로드를 먼저 한다 (사용자)")
 if run("train", "train_nemotron.py", TRAIN) != 0:
     raise SystemExit("학습 실패. 평가는 하지 않는다")
-nemos = sorted(glob.glob(f"{DRIVE}/ckpt/ft_v3/v1/checkpoints/*.nemo"))
-if not nemos:
-    raise SystemExit("ft_v3 .nemo가 없다")
+# 학습이 끝날 때 마지막 모델이 ft_v3.nemo로 저장된다 (예전 것은 ft_v3-v1.nemo처럼 이름이 바뀌어 남는다)
+FT3 = f"{DRIVE}/ckpt/ft_v3/v1/checkpoints/ft_v3.nemo"
+if not os.path.exists(FT3):
+    raise SystemExit("ft_v3.nemo가 없다")
 for name, ctx in (("ft_v3_320ms", "[56,3]"), ("ft_v3_1120ms", "[56,13]")):
-    run(name, "zeroshot_nemotron.py", {"MODEL": nemos[-1], "ATT_CONTEXT": ctx, "OUT_NAME": name})
+    run(name, "zeroshot_nemotron.py", {"MODEL": FT3, "ATT_CONTEXT": ctx, "OUT_NAME": name})

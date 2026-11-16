@@ -93,6 +93,8 @@ def overrides(train_m, val_m, bd, accum):
         f"model.validation_ds.manifest_filepath={val_m}", "model.validation_ds.batch_size=8",
         "model.validation_ds.num_workers=2",
         "~model.test_ds",
+        # 검증 중 정답·예측 문장을 로그에 찍지 않는다 (AI Hub 전사가 로그와 에이전트 화면에 남지 않게, 11-16)
+        "model.log_prediction=false",
         # 최적화: 작은 학습률 + 코사인 (Noam의 lr은 배율이라 헷갈려서 바꾼다)
         "model.optim.name=adamw", f"model.optim.lr={LR}", "model.optim.weight_decay=1e-3",
         "model.optim.sched.name=CosineAnnealing", f"model.optim.sched.warmup_steps={WARMUP}",
