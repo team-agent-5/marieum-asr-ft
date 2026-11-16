@@ -131,4 +131,5 @@ def main():
     print(f"완료. 내려받기: colab download -s nemo {OUT}/hyps.jsonl ./work/eval/{OUT.name}/hyps.jsonl")
 
 
-main()
+if __name__ == "__main__":  # eval_segmented.py가 unpack·install을 가져다 쓴다
+    main()

@@ -368,3 +368,59 @@ python data_prep/build_train_manifests.py --name v3 --stats work/manifests/train
 - 11-15 결과: 9,233구간 중 빈 출력 1,418개. 정렬 구간 train 37.2h → 38.7h (중등도 5.76 → 6.68h, 중증 3.42 → 4.03h). 두 길잡이가 모두 남긴 구간은 자른 위치가 중등도 89%, 중증 79% 같다(차이 20% 미만). 시험 모델 길잡이로 새로 남긴 중증 구간의 받아쓰기-정답 CER 중앙값 0.14. 학습 목록 반복 후 49.0h → 51.9h (중증 10.0 → 11.5h, 중등도 11.5 → 12.9h). 화자당 20분 상한 때문에 늘어난 만큼 다 들어가지는 않는다
 
 주의: 시험 학습 모델은 1차에서 남은 구간을 학습했다. 그 구간에서는 받아쓰기가 정답을 외워 맞힐 수 있지만, 이미 남은 구간이라 결과는 같다. 새로 건지는 구간(1차에서 버려진 것)은 학습에 쓰이지 않았으므로 외운 것이 아니다.
+
+---
+
+# 0단계 실험: 쉼마다 끊기, yoona-J 공정 비교, 지연 1.12초 (11-16)
+
+ft_v1(EXP-004)은 녹음 전체를 한 번에 흘려 넣어 평가했다. 운영 서버는 쉼(1.75초)마다 구간을 끊고 구간마다 모델을 새로 돌린다. 세 가지를 한 VM에서 차례로 잰다.
+
+| 실험 | 스크립트 | 결과 이름 |
+|---|---|---|
+| B. ft_v1을 쉼마다 끊어서 | `colab/eval_segmented.py` MODE=nemo | `ft_v1_vad_320ms` |
+| A. yoona-J를 운영 서버처럼 (공정한 기준선) | `colab/eval_segmented.py` MODE=whisper | `yoonaj_vad` |
+| C. ft_v1을 녹음 전체로, 지연 1.12초 | `colab/zeroshot_nemotron.py` ATT_CONTEXT=[56,13] | `ft_v1_1120ms` |
+
+## 1. VM과 Drive (사용자)
+
+```bash
+colab --auth=oauth2 new -s stage0 --gpu L4
+colab --auth=oauth2 drivemount -s stage0
+```
+
+## 2. 실행 (한 번만)
+
+```bash
+echo 'import os; os.makedirs("/content/upload", exist_ok=True); print("ok")' | colab --auth=oauth2 exec -s stage0
+for f in work/upload/test_v2.tar.part-*; do colab --auth=oauth2 upload -s stage0 "$f" "/content/upload/$(basename "$f")" || break; done
+colab --auth=oauth2 upload -s stage0 colab/zeroshot_nemotron.py /content/zeroshot_nemotron.py
+colab --auth=oauth2 upload -s stage0 colab/eval_segmented.py /content/eval_segmented.py
+colab --auth=oauth2 upload -s stage0 colab/run_stage0.py /content/run_stage0.py
+echo 'import subprocess; p=subprocess.run("python /content/run_stage0.py", shell=True); print("exit", p.returncode)' | colab --auth=oauth2 exec -s stage0
+```
+
+- 전체 약 1.5시간 (B 40분, A 15분, C 35분). L4 약 3 CU
+- 셋 중 하나가 실패해도 다음 것은 돈다
+
+## 3. 진행 확인 (커널을 쓰지 않는 명령만, 20분마다)
+
+```bash
+colab --auth=oauth2 status -s stage0
+colab --auth=oauth2 ls -s stage0 /content/drive/MyDrive/marieum-asr-ft/runs/eval
+```
+
+`ft_v1_vad_320ms`, `yoonaj_vad`, `ft_v1_1120ms` 폴더가 끝나는 순서대로 생긴다. IDLE이 되면 4단계.
+
+## 4. 결과 받기와 반납
+
+```bash
+for d in ft_v1_vad_320ms yoonaj_vad ft_v1_1120ms; do mkdir -p work/eval/$d; for f in hyps.jsonl run_info.json; do colab --auth=oauth2 download -s stage0 /content/out/$d/$f work/eval/$d/$f; done; done
+colab --auth=oauth2 stop -s stage0
+colab --auth=oauth2 sessions
+```
+
+## 5. 채점 (이 PC)
+
+```bash
+for d in ft_v1_vad_320ms yoonaj_vad ft_v1_1120ms; do python eval/score.py --hyps work/eval/$d/hyps.jsonl --out work/eval/$d; done
+```
