@@ -514,14 +514,18 @@ colab --auth=oauth2 drivemount -s ftv3
 
 ```bash
 colab --auth=oauth2 usage
-echo 'import os; os.makedirs("/content/upload", exist_ok=True); print("ok")' | colab --auth=oauth2 exec -s ftv3
-for f in work/upload/test_v2.tar.part-*; do colab --auth=oauth2 upload -s ftv3 "$f" "/content/upload/$(basename "$f")" || break; done
-colab --auth=oauth2 upload -s ftv3 colab/train_nemotron.py /content/train_nemotron.py
-colab --auth=oauth2 upload -s ftv3 colab/zeroshot_nemotron.py /content/zeroshot_nemotron.py
-colab --auth=oauth2 upload -s ftv3 colab/run_ft_v3.py /content/run_ft_v3.py
+echo 'import os; os.makedirs("/content/upload", exist_ok=True); print("ok")' | timeout 120 colab --auth=oauth2 exec -s ftv3
+for f in work/upload/test_v2.tar.part-*; do timeout 900 colab --auth=oauth2 upload -s ftv3 "$f" "/content/upload/$(basename "$f")" || break; done
+timeout 120 colab --auth=oauth2 upload -s ftv3 colab/train_nemotron.py /content/train_nemotron.py
+timeout 120 colab --auth=oauth2 upload -s ftv3 colab/zeroshot_nemotron.py /content/zeroshot_nemotron.py
+timeout 120 colab --auth=oauth2 upload -s ftv3 colab/run_ft_v3.py /content/run_ft_v3.py
+timeout 120 colab --auth=oauth2 ls -s ftv3 /content/upload
 echo 'import subprocess; p=subprocess.run("python /content/run_ft_v3.py", shell=True); print("exit", p.returncode)' | colab --auth=oauth2 exec -s ftv3
 ```
 
+- **준비 명령(폴더 만들기, 올리기)은 다시 보내도 된다.** 11-16 첫 시도에서 drivemount 직후 첫 exec가 `RuntimeError: Connection was lost.`를 내고 37분 동안 멈춰 있었다 (VM은 살아 있었고 IDLE, A100이 놀며 4.35 CU를 썼다). 그래서 준비 명령에는 `timeout`을 걸고, 실패하면 `status`로 세션이 살아 있는지 보고 같은 명령을 한 번 더 보낸다. 두 번째도 실패하면 멈추고 보고한다
+- **실행 명령(`run_ft_v3.py`)만은 한 번만 보낸다.** timeout도 걸지 않는다 (30분 뒤 TimeoutError로 돌아와도 VM 안에서는 계속 돈다)
+- 마지막 `ls`에 `test_v2.tar.part-00`~`03`이 모두 보이는지 확인한 뒤 실행 명령을 보낸다
 - 약 3시간 (ft_v2 실측: 시작부터 끝까지 2시간 57분, A100 시간당 6.73 CU, 약 20 CU). 조각이 길어져 조금 더 걸릴 수 있다
 
 ## 3. 진행 확인 (커널을 쓰지 않는 명령만, 30분마다)
