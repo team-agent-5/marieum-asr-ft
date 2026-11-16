@@ -627,3 +627,66 @@ colab --auth=oauth2 stop -s ftv3
 colab --auth=oauth2 sessions
 colab --auth=oauth2 usage
 ```
+
+# 실시간 지표 (11-17)
+
+정확도 말고, 화면에서 글자가 **언제 뜨고 얼마나 바뀌는지** 잰다. 운영 서버(marieum-ai)는 yoona-J로 쉼 1.75초마다 구간을 닫아 final을 내고, 구간 안에서는 0.5초마다 구간 전체를 다시 받아써서 interim을 낸다. Nemotron은 0.32초 조각마다 글자를 덧붙인다.
+
+- `colab/streaming_metrics.py`: 소리가 실제 속도로 들어온다고 보고 흉내 낸다. 계산 시간은 GPU에서 실제로 잰 값. 녹음마다 앞 3분 (30개, 90분)
+  - yoona-J는 운영 코드(`colab/marieum_stream.py`, marieum-ai `server/stream.py` 복사본)로 구간·interim·확정을 똑같이 한다. 세션 1개
+  - Nemotron(ft_v3)은 4개 녹음을 한 번에 돌린다 (동시 4세션의 GPU 부담)
+- 지표: 말 시작 → 첫 글자, 말 끝 → 글자가 다 뜨기까지, 화면에서 지워진 글자 수(100자당), 글자가 바뀐 구간 비율, GPU 계산 시간
+- 결과는 숫자만 (`segments.csv`, `summary.json`). 문장은 저장하지 않는다
+- 이 PC에서 가짜 모델로 논리를 점검했다 (구간 나누기, interim 시점, 지움 계산)
+- L4. 약 45분 (설치 15분 + yoona-J 20분 + Nemotron 둘 10분), 약 1.5 CU
+
+### 1. VM과 Drive (사용자)
+
+```bash
+colab --auth=oauth2 new -s rt --gpu L4
+colab --auth=oauth2 drivemount -s rt
+```
+
+### 2. 준비 (다시 보내도 되는 명령)
+
+```bash
+colab --auth=oauth2 usage
+echo 'import os; os.makedirs("/content/upload", exist_ok=True); print("ok")' | timeout 120 colab --auth=oauth2 exec -s rt
+for f in work/upload/test_v2.tar.part-*; do timeout 900 colab --auth=oauth2 upload -s rt "$f" "/content/upload/$(basename "$f")" || break; done
+for s in streaming_metrics.py marieum_stream.py zeroshot_nemotron.py run_rt.py job.py; do timeout 120 colab --auth=oauth2 upload -s rt colab/$s /content/$s; done
+timeout 120 colab --auth=oauth2 ls -s rt /content/upload
+timeout 120 colab --auth=oauth2 ls -s rt /content
+timeout 120 colab --auth=oauth2 ls -s rt /content/drive/MyDrive/marieum-asr-ft/ckpt/ft_v3/v1/checkpoints
+```
+
+- 실패하면 `status`로 세션을 보고 같은 명령을 한 번 더. 두 번째도 실패하면 멈추고 보고
+- 확인할 것: `test_v2.tar.part-00`~`03`, 스크립트 5개, Drive에 `ft_v3.nemo`
+
+### 3. 시작 (한 번) 과 기다리기
+
+```bash
+echo 'import subprocess; p=subprocess.run("python /content/job.py start run_rt.py", shell=True, capture_output=True, text=True); print(p.stdout, p.stderr)' | timeout 120 colab --auth=oauth2 exec -s rt
+echo 'import subprocess; p=subprocess.run("python /content/job.py wait", shell=True, capture_output=True, text=True); print(p.stdout[-3000:], p.stderr[-2000:])' | colab --auth=oauth2 exec -s rt
+```
+
+- 첫 명령은 `시작, pid ...`. 둘째(`wait`)는 백그라운드로 돌리고 다시 보내지 않는다
+
+### 4. 진행 확인 (15분마다, exec 없이)
+
+```bash
+colab --auth=oauth2 status -s rt
+colab --auth=oauth2 ls -s rt /content/drive/MyDrive/marieum-asr-ft/runs/eval
+colab --auth=oauth2 usage
+```
+
+- `runs/eval`에 `rt_yoonaj`, `rt_ft_v3_320ms`, `rt_ft_v3_1120ms`가 차례로 생긴다
+- 연결이 끊기면 "ft_v3 이어 하기" 4단계와 같은 규칙 (`BUSY`면 둔다, `IDLE`이면 `job.py peek`, `도는 중`이면 `wait` 다시)
+
+### 5. 결과 받기와 반납
+
+```bash
+for d in rt_yoonaj rt_ft_v3_320ms rt_ft_v3_1120ms; do mkdir -p work/eval/$d; for f in summary.json segments.csv; do colab --auth=oauth2 download -s rt /content/out/$d/$f work/eval/$d/$f; done; done
+colab --auth=oauth2 stop -s rt
+colab --auth=oauth2 sessions
+colab --auth=oauth2 usage
+```
