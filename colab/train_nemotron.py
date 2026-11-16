@@ -34,6 +34,7 @@ LR = float(os.environ.get("LR", "3e-5"))
 WARMUP = int(os.environ.get("WARMUP", "200"))
 EFFECTIVE_BATCH_S = float(os.environ.get("EFFECTIVE_BATCH_S", "400"))  # 한 번 갱신에 들어가는 음성 초
 LOG = DRIVE / "runs" / "train" / f"{RUN}.log"
+MAX_DURATION = float(os.environ.get("MAX_DURATION", "22"))  # 이보다 긴 구간은 로더가 버린다. 속도 변형 0.9배도 생각한다
 TRAIN_MANIFEST = os.environ.get("TRAIN_MANIFEST", "train_v2.jsonl")
 VAL_MANIFEST = os.environ.get("VAL_MANIFEST", "val_v2.jsonl")
 CONF_DIR = "examples/asr/conf/fastconformer/cache_aware_streaming"
@@ -78,12 +79,13 @@ def overrides(train_m, val_m, bd, accum):
     """NeMo 설정 덮어쓰기. 공식 설정에 없는 키는 ++ (있으면 덮어쓰기, 없으면 추가).
     바꾸면 이 PC에서 먼저 검사한다: python colab/check_train_config.py"""
     return [
-        f"+init_from_pretrained_model={BASE}",
+        # .nemo 파일에서 이어 학습할 때는 init_from_nemo_model (ft_v2는 ft_v1에서 시작, 11-16)
+        f"+init_from_nemo_model={BASE}" if BASE.endswith(".nemo") else f"+init_from_pretrained_model={BASE}",
         # 데이터
         f"model.train_ds.manifest_filepath={train_m}", "model.train_ds.is_tarred=false",
         "model.train_ds.tarred_audio_filepaths=null", f"model.train_ds.batch_duration={bd}",
         "++model.train_ds.use_bucketing=true", "model.train_ds.num_buckets=10", "model.train_ds.bucket_buffer_size=5000",
-        "model.train_ds.max_duration=22", "model.train_ds.min_duration=0.5", "model.train_ds.shuffle=true",
+        f"model.train_ds.max_duration={MAX_DURATION}", "model.train_ds.min_duration=0.5", "model.train_ds.shuffle=true",
         "++model.train_ds.perturb_speed=true", "model.train_ds.num_workers=4",
         # 언어: 항상 ko-KR을 준다. 공식 기본값 unified는 절반을 '언어 스스로 맞히기'(auto)로 학습한다 (11-15 시험 학습).
         # 마리음은 항상 한국어라 필요 없다

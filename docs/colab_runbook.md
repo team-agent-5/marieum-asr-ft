@@ -424,3 +424,62 @@ colab --auth=oauth2 sessions
 ```bash
 for d in ft_v1_vad_320ms yoonaj_vad ft_v1_1120ms; do python eval/score.py --hyps work/eval/$d/hyps.jsonl --out work/eval/$d; done
 ```
+
+---
+
+# ft_v2: 쉼이 들어간 조각으로 이어 학습 (11-16)
+
+0단계 결과 (EXP-005~007): 자유발화 19개에서 yoona-J 33.7 대 ft_v1 38.2. 남은 오류는 대부분 빠뜨림이고 쉬었다 다시 말하는 문장 첫머리에서 많다.
+
+- **학습 목록 v4:** 구간 앞뒤에 실제 녹음 0.2~0.8초를 더 붙인다 (이웃 말소리까지의 쉼 안에서만). 이어 붙이기를 쉼 6초까지, 확률 80%로 늘린다. 반복 후 60.4h (늘어난 시간은 대부분 앞뒤 쉼)
+- **학습:** ft_v1에서 이어서 2000 step, 학습률 2e-5, warmup 100, 최대 길이 25초
+- **검증:** ft_v1과 같은 `val_v3.jsonl`. val_wer를 ft_v1 마지막 값 0.399와 바로 비교할 수 있다
+- **평가:** 같은 VM에서 이어서 1.12초, 0.32초
+
+## 0. 학습 목록 (이 PC, 완료)
+
+```bash
+python data_prep/build_train_manifests.py --name v4 --stats work/manifests/train_v4_stats.csv --context-pad 0.8 --merge-gap 6 --merge-prob 0.8 --merge-max 18
+```
+
+- **사용자가 `~/marieum-private/manifests/train_v4.jsonl`을 Drive `marieum-asr-ft/data/manifests/`에 올린다** (`val_v3.jsonl`은 이미 있다)
+
+## 1. VM과 Drive (사용자)
+
+```bash
+colab --auth=oauth2 new -s ftv2 --gpu A100
+colab --auth=oauth2 drivemount -s ftv2
+```
+
+## 2. 실행 (한 번만)
+
+```bash
+colab --auth=oauth2 usage
+echo 'import os; os.makedirs("/content/upload", exist_ok=True); print("ok")' | colab --auth=oauth2 exec -s ftv2
+for f in work/upload/test_v2.tar.part-*; do colab --auth=oauth2 upload -s ftv2 "$f" "/content/upload/$(basename "$f")" || break; done
+colab --auth=oauth2 upload -s ftv2 colab/train_nemotron.py /content/train_nemotron.py
+colab --auth=oauth2 upload -s ftv2 colab/zeroshot_nemotron.py /content/zeroshot_nemotron.py
+colab --auth=oauth2 upload -s ftv2 colab/run_ft_v2.py /content/run_ft_v2.py
+echo 'import subprocess; p=subprocess.run("python /content/run_ft_v2.py", shell=True); print("exit", p.returncode)' | colab --auth=oauth2 exec -s ftv2
+```
+
+- 약 3시간 (학습 2시간 15분 + 준비 15분 + 평가 40분)
+
+## 3. 진행 확인 (커널을 쓰지 않는 명령만, 30분마다)
+
+```bash
+colab --auth=oauth2 status -s ftv2
+colab --auth=oauth2 download -s ftv2 /content/drive/MyDrive/marieum-asr-ft/runs/train/ft_v2.log work/train_ft_v2.log && tail -5 work/train_ft_v2.log
+colab --auth=oauth2 ls -s ftv2 /content/drive/MyDrive/marieum-asr-ft/runs/eval
+```
+
+- 학습 중: 로그 끝의 step, val_wer. 학습이 끝나면 `runs/eval`에 `ft_v2_1120ms`, `ft_v2_320ms`가 차례로 생긴다
+
+## 4. 결과 받기와 반납
+
+```bash
+for d in ft_v2_1120ms ft_v2_320ms; do mkdir -p work/eval/$d; for f in hyps.jsonl run_info.json; do colab --auth=oauth2 download -s ftv2 /content/out/$d/$f work/eval/$d/$f; done; done
+colab --auth=oauth2 stop -s ftv2
+colab --auth=oauth2 sessions
+colab --auth=oauth2 usage
+```

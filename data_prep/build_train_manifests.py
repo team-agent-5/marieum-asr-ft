@@ -5,6 +5,9 @@
       work/manifests/train_v1_stats.csv                       (숫자만)
 
 - 화자당 상한: 학습 20분, 기준점 10분, 검증 10분. 상한 안에서는 무작위로 고른다 (파일·과제가 섞이게)
+- 앞뒤 여유 (--context-pad, v4부터): 구간 앞뒤에 실제 녹음을 0.2~최대초 더 붙인다. 이웃 말소리 구간(VAD)까지의
+  쉼 안에서만 붙여서 정답에 없는 말이 들어가지 않게 한다. "조용하다가 말이 시작되는" 소리를 배우게 한다 (11-16 EXP-004:
+  쉬었다 다시 말하는 문장 첫머리를 1.8배 더 빠뜨림)
 - 묶음별 반복: 중증 3번, 중등도 2번, 경증 1번, 기준점 2번 (--repeat로 바꾼다).
   NeMo Lhotse 로더는 manifest별 가중치 설정이 불확실해서 줄을 반복해 비율을 맞춘다. 셔플 버퍼가 섞는다
 
@@ -67,6 +70,35 @@ def merge_neighbors(rows, rng, max_gap, max_len, prob):
     return out, merged
 
 
+def add_context(rows, vad_dir, rng, pad_max, margin=0.1):
+    """구간 앞뒤로 이웃 VAD 구간까지의 쉼 안에서 0.2~pad_max초를 더 붙인다. 녹음 끝 구간의 뒤는 붙이지 않는다
+    (파일 길이를 모르므로). 붙인 양은 pad_before/pad_after로 남긴다 (숫자 확인용, manifest에는 안 쓴다)."""
+    bounds = defaultdict(list)
+    for f in Path(vad_dir).glob("*.jsonl"):
+        for line in open(f, encoding="utf-8"):
+            v = json.loads(line)
+            bounds[v["stem"]].append((v["start"], v["end"]))
+    for b in bounds.values():
+        b.sort()
+    out, mismatch = [], 0
+    for r in rows:
+        b = bounds[r["stem"]]
+        k = r["seg_idx"]
+        if k >= len(b) or abs(b[k][0] - r["offset"]) > 0.02:
+            mismatch += 1
+            out.append(r)
+            continue
+        room_before = r["offset"] - (b[k - 1][1] if k > 0 else 0.0) - margin
+        room_after = (b[k + 1][0] - b[k][1] - margin) if k + 1 < len(b) else 0.0
+        pb = max(0.0, min(rng.uniform(0.2, pad_max), room_before, r["offset"]))
+        pa = max(0.0, min(rng.uniform(0.2, pad_max), room_after))
+        out.append({**r, "offset": round(r["offset"] - pb, 3), "duration": round(r["duration"] + pb + pa, 3),
+                    "pad_before": pb, "pad_after": pa})
+    if mismatch:
+        print(f"주의: VAD 경계와 안 맞는 구간 {mismatch}개는 여유 없이 쓴다")
+    return out
+
+
 def cap_per_speaker(rows, minutes, rng):
     by = defaultdict(list)
     for r in rows:
@@ -98,16 +130,24 @@ def main():
     ap.add_argument("--merge-max", type=float, default=18.0, help="이어 붙인 구간 최대 길이(초). 속도 변형 1.1배 후 22초 안")
     ap.add_argument("--merge-prob", type=float, default=0.5)
     ap.add_argument("--name", default="v2", help="출력 이름: train_<name>.jsonl, val_<name>.jsonl")
+    ap.add_argument("--context-pad", type=float, default=0.0, help="구간 앞뒤 여유 최대(초). 0이면 붙이지 않는다 (v4: 0.8)")
+    ap.add_argument("--vad-dir", default="work/segments/vm", help="문장 나누기 1단계 VAD 구간 (여유를 붙일 때 이웃 경계)")
     args = ap.parse_args()
     rng = random.Random(args.seed)
     rep = {k: int(v) for k, v in (x.split("=") for x in args.repeat.split(","))}
 
     train_rows = load(Path(args.segs) / "segments_train.jsonl")
+    val_rows = load(Path(args.segs) / "segments_val.jsonl")
+    if args.context_pad > 0:
+        train_rows = add_context(train_rows, args.vad_dir, rng, args.context_pad)
+        val_rows = add_context(val_rows, args.vad_dir, rng, args.context_pad)
+        pads = [r.get("pad_before", 0) + r.get("pad_after", 0) for r in train_rows]
+        print(f"앞뒤 여유: 평균 {sum(pads) / len(pads):.2f}초, 여유 0인 구간 {sum(p == 0 for p in pads)}개")
     if args.merge_gap > 0:
         train_rows, n_merged = merge_neighbors(train_rows, rng, args.merge_gap, args.merge_max, args.merge_prob)
         print(f"이어 붙인 구간 {n_merged}개")
     train = cap_per_speaker(train_rows, lambda t: args.anchor_cap_min if t == "anchor" else args.cap_min, rng)
-    val = cap_per_speaker(load(Path(args.segs) / "segments_val.jsonl"), lambda t: args.val_cap_min, rng)
+    val = cap_per_speaker(val_rows, lambda t: args.val_cap_min, rng)
 
     train_rep = [r for r in train for _ in range(rep.get(r["tier"], 1))]
     rng.shuffle(train_rep)
