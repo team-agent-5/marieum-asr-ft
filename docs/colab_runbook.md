@@ -483,3 +483,72 @@ colab --auth=oauth2 stop -s ftv2
 colab --auth=oauth2 sessions
 colab --auth=oauth2 usage
 ```
+
+# ft_v3: ft_v2에서 한 번 더, 쉼을 더 길게 (11-16)
+
+ft_v2 결과 (EXP-008): test_v2 32.1. 문장 첫머리 빠뜨림이 경증·중등도에서 10~12% → 6%로 줄었다. 쉼을 붙인 효과로 보고 한 번 더 늘린다.
+
+- **학습 목록 v5:** 앞뒤 쉼 최대 0.8 → 1.5초 (평균 0.93 → 1.49초), 이어 붙이기 쉼 6 → 10초, 확률 80 → 90%, 최대 18 → 20초. 반복 후 67.1h, 가장 긴 조각 22.1초
+- **학습:** ft_v2에서 이어서 2000 step, 학습률 1.5e-5 (ft_v2는 2e-5), warmup 100, 최대 길이 25초
+- **검증:** 같은 `val_v3.jsonl`. ft_v1 0.399, ft_v2 0.386과 비교
+- **평가:** 같은 VM에서 이어서 0.32초, 1.12초
+- **주의:** test_v2 글의 86%는 학습 라벨에도 있는 대본이다. test_v2 점수가 오르면 외운 것일 수도 있다. 처음 보는 글 점수(`eval/unseen_text.py`)도 같이 본다. 다만 그런 글자는 전체의 14%이고 화자 2명에 몰려 있어 참고용이다
+- ft_v2 모델(`ckpt/ft_v2/`)은 그대로 둔다. ft_v3는 `ckpt/ft_v3/`에 따로 저장된다
+
+## 0. 학습 목록 (이 PC, 완료)
+
+```bash
+python data_prep/build_train_manifests.py --name v5 --stats work/manifests/train_v5_stats.csv --context-pad 1.5 --merge-gap 10 --merge-prob 0.9 --merge-max 20
+```
+
+- **사용자가 `~/marieum-private/manifests/train_v5.jsonl`을 Drive `marieum-asr-ft/data/manifests/`에 올린다** (`val_v3.jsonl`은 이미 있다)
+
+## 1. VM과 Drive (사용자)
+
+```bash
+colab --auth=oauth2 new -s ftv3 --gpu A100
+colab --auth=oauth2 drivemount -s ftv3
+```
+
+## 2. 실행 (한 번만)
+
+```bash
+colab --auth=oauth2 usage
+echo 'import os; os.makedirs("/content/upload", exist_ok=True); print("ok")' | colab --auth=oauth2 exec -s ftv3
+for f in work/upload/test_v2.tar.part-*; do colab --auth=oauth2 upload -s ftv3 "$f" "/content/upload/$(basename "$f")" || break; done
+colab --auth=oauth2 upload -s ftv3 colab/train_nemotron.py /content/train_nemotron.py
+colab --auth=oauth2 upload -s ftv3 colab/zeroshot_nemotron.py /content/zeroshot_nemotron.py
+colab --auth=oauth2 upload -s ftv3 colab/run_ft_v3.py /content/run_ft_v3.py
+echo 'import subprocess; p=subprocess.run("python /content/run_ft_v3.py", shell=True); print("exit", p.returncode)' | colab --auth=oauth2 exec -s ftv3
+```
+
+- 약 3시간 (ft_v2 실측: 시작부터 끝까지 2시간 57분, A100 시간당 6.73 CU, 약 20 CU). 조각이 길어져 조금 더 걸릴 수 있다
+
+## 3. 진행 확인 (커널을 쓰지 않는 명령만, 30분마다)
+
+```bash
+colab --auth=oauth2 status -s ftv3
+colab --auth=oauth2 download -s ftv3 /content/drive/MyDrive/marieum-asr-ft/runs/train/ft_v3.log work/train_ft_v3.log && tail -5 work/train_ft_v3.log
+colab --auth=oauth2 ls -s ftv3 /content/drive/MyDrive/marieum-asr-ft/ckpt/ft_v3/v1/checkpoints
+colab --auth=oauth2 ls -s ftv3 /content/drive/MyDrive/marieum-asr-ft/runs/eval
+```
+
+- val_wer는 체크포인트 파일 이름(`ft_v3--val_wer=0.xxxx-epoch=N.ckpt`)에서 본다. 학습이 끝나면 `runs/eval`에 `ft_v3_320ms`, `ft_v3_1120ms`가 차례로 생긴다
+
+## 4. 결과 받기와 반납
+
+```bash
+for d in ft_v3_320ms ft_v3_1120ms; do mkdir -p work/eval/$d; for f in hyps.jsonl run_info.json; do colab --auth=oauth2 download -s ftv3 /content/out/$d/$f work/eval/$d/$f; done; done
+colab --auth=oauth2 ls -s ftv3 /content/drive/MyDrive/marieum-asr-ft/ckpt/ft_v3/v1/checkpoints
+colab --auth=oauth2 stop -s ftv3
+colab --auth=oauth2 sessions
+colab --auth=oauth2 usage
+```
+
+## 5. 채점 (이 PC)
+
+```bash
+python eval/audit_colab_run.py --expect-head <커밋>
+for d in ft_v3_320ms ft_v3_1120ms; do python eval/score.py --hyps work/eval/$d/hyps.jsonl --out work/eval/$d; done
+python eval/unseen_text.py --runs yoonaj_vad ft_v2_320ms ft_v3_320ms ft_v3_1120ms
+```
