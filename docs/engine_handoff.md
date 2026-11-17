@@ -11,7 +11,7 @@
   - 모델 실행은 **NeMo 공식 스트리밍 파이프라인 `CacheAwareRNNTPipeline`**에 맡긴다. 세션별 상태, 특징 만들기, 여러 세션 묶기, 발화 끝 판정, 신뢰도, 단어 시각이 다 들어 있다
   - 우리가 만드는 것은 그 위의 **WebSocket 층**뿐이다: 세션 ↔ `stream_id`, 오디오 → `Frame`, 결과 → 메시지
   - 새 엔드포인트 `/asr-stream/v2`(9절)를 연다. 지금 `/asr-stream`(v1)은 Whisper 그대로 두거나, 같은 코어 위의 어댑터로 붙인다 (3.7)
-- **아직 정하지 않은 것:** 문장 끊기를 모델의 발화 끝 판정으로 할지, 지금처럼 VAD 쉼 1.75초로 할지. 구음장애 화자는 말 중간에 길게 쉬어서 실험으로 정한다 (3.4, 6절 2단계)
+- **확인됨 (11-17, EXP-015 ~ 017):** NeMo 파이프라인으로 돌려도 정확도가 같다 (CER 27.9, 예전 경로 28.4). 문장 끊기는 **모델 판정 800ms로 글자를 확정하고, 앱에 보이는 문장 경계는 지금처럼 VAD 쉼 1.75초로** 하는 섞은 방식을 권한다 (3.4)
 - **일정:** 11-21 교체 판정, 11-22 ~ 24 연결·배포, 11-25 리허설, 11-26 시연. 판정 전에는 기본값을 Whisper로 둔다
 - **끝난 모습:** `ML_ENGINE=nemotron`으로 띄우면 `/asr-stream/v2`가 열리고 delta/final이 나간다. `ML_ENGINE=whisper`로 되돌리면 지금과 똑같다. 6절의 확인을 모두 마친다
 
@@ -37,7 +37,7 @@
   - 실시간 지표: [`colab/streaming_metrics.py`](../colab/streaming_metrics.py)의 `load_nemo()`, `stream_batch()`
   - 설정: `att_context_size [56,3]`, `RNNTDecodingConfig(fused_batch_size=-1)`, `set_inference_prompt("ko-KR")`, `set_strip_lang_tags(True)`, `pad_and_drop_preencoded=True`, 가중치 fp32 + bf16 autocast
 - **운영은 NeMo의 새 스트리밍 파이프라인으로 한다 (3절).** 같은 모델을 같은 방식(cache-aware, 조각 단위)으로 돌리지만 코드가 다르다
-- 그래서 **파이프라인으로 같은 CER이 나오는지 먼저 다시 잰다** (6절 1단계). 차이가 0.5점 넘게 나면 설정을 맞추기 전에는 넘어가지 않는다
+- **파이프라인으로 같은 CER이 나오는지 다시 쟀다 (11-17):** bf16 계산 27.86 (EXP-015), fp32 + autocast 28.51 (EXP-016). 예전 경로 28.42와 같은 수준이고, bf16이 조금 낫다. 화자별로는 14명 좋아지고 8명 나빠졌다 (가장 크게 바뀐 화자 9.7점)
 
 ## 3. 서비스 구조 (권장)
 
@@ -76,9 +76,9 @@ NeMo `examples/asr/conf/asr_streaming_inference/cache_aware_rnnt.yaml`을 바탕
 | `streaming.num_slots` | 32 | 동시 세션 한도보다 크게 |
 | `streaming.request_type` | `frame` | 오디오를 그대로 넣는다 |
 | `asr.decoding.strategy` | `greedy_batch` | 평가와 같다 |
-| `asr.compute_dtype` / `asr.use_amp` | `bfloat16` / `false` (파이프라인 기본) | 평가는 fp32 가중치 + bf16 autocast였다. 6절 1단계에서 둘 다 재 보고 CER이 같은 쪽 중 빠른 것을 고른다 |
+| `asr.compute_dtype` / `asr.use_amp` | `bfloat16` / `false` (파이프라인 기본) | 둘 다 재 봤다. bf16이 CER 27.86으로 fp32 + autocast(28.51)보다 조금 낫고 속도는 같다 (EXP-015, 016) |
 | `asr.decoding.greedy.preserve_frame_confidence` | `true` | `confidence` 값 |
-| `endpointing.stop_history_eou` | 3.4에서 정한다 | 발화 끝 판정 |
+| `endpointing.stop_history_eou` | 800 | 글자 확정용 (3.4). **끄면 안 된다** |
 | `enable_itn` | `false` | 숫자 변환(ITN)은 영어용 설정이다. 한국어 ITN은 확인하지 않았다 |
 | `asr_output_granularity` | `segment` | |
 
@@ -116,19 +116,28 @@ GPU 작업자 (스레드 하나)
 - 세션 오디오는 끊지 않고 계속 넣는다. 발화 끝에서도 상태를 새로 시작하지 않는다 (구간마다 새로 시작하면 빠뜨림이 16.4%에서 21.8%로 늘었다, EXP-006). 쉬는 동안의 무음도 넣는다
 - 한도: 처리 못 한 오디오가 세션당 `ML_NEMO_MAX_BACKLOG_MS`(5초)를 넘으면 `OVERLOADED`로 세션을 닫는다. 동시 세션은 `ML_NEMO_MAX_SESSIONS`(16)
 
-### 3.4 문장 끊기: 모델 판정 vs VAD 쉼
+### 3.4 문장 끊기: 모델 판정 vs VAD 쉼 (11-17 실험, EXP-017)
 
-| | A. 모델의 발화 끝 판정 (NeMo 기본) | B. 지금 방식 (Silero VAD, 쉼 1.75초) |
-|---|---|---|
-| 어떻게 | 모델이 `stop_history_eou`ms 동안 빈 출력만 내면 끝 | marieum-ai `Segmenter` 그대로. 구간이 닫히면 그때까지의 `partial_transcript`를 final로 본다 |
-| 장점 | 정석. 추가 모델이 없다. final이 빨리 나온다 (기본 800ms) | 이미 앱과 맞춰 둔 값. 구음장애 화자의 긴 쉼에 덜 끊긴다 |
-| 걱정 | 구음장애 화자는 말 중간에 길게 쉰다. 800ms면 문장 중간에서 끊길 수 있다 (11-01에 0.8초를 1.75초로 늘린 이유와 같다) | Whisper 때문에 생긴 구조다. final이 늘 1.75초 늦다. 모델 상태와 VAD 구간이 어긋날 수 있다 |
+test_v2 녹음 30개 전체에 모델의 발화 끝 판정(`stop_history_eou`)을 켜고, 운영 VAD 구간(쉼 1.75초, 901개)과 비교했다 ([`eval/eou_compare.py`](../eval/eou_compare.py)).
 
-- **6절 2단계 실험으로 정한다:** A를 `stop_history_eou` 800 / 1200 / 1600 / 2000ms로, B를 1.75초로 같은 녹음에 돌린다. 두 가지를 본다
-  - 문장이 끊기는 횟수와 위치: 한 문장이 둘로 쪼개지는가 (B 구간 수와 비교)
-  - 말이 끝나고 final이 오기까지의 시간
-- 정하기 전에는 B로 시작해도 된다. 앱 입장에서는 delta가 0.26초면 다 떠 있으므로 final이 늦어도 기다리는 느낌이 적다
-- `Frame.vad_segments`에 VAD 구간을 넘겨 발화 끝 판정에 쓰는 기능도 있다. A와 B를 섞을 때 검토한다
+| | 확정 수 | VAD 한 문장 안에서 끊김 | 문장 끝 뒤 확정까지 p50 / p95 | 계산 속도 (RTF) | CER |
+|---|---|---|---|---|---|
+| 판정 끔 | 녹음 끝에서만 | | | **0.120 (느림)** | 27.86 |
+| 800ms | 2,288 | 48.5% | 1.12 / 1.54초 | 0.022 | 27.86 |
+| 1200ms | 1,637 | 32.6% | 1.54 / 1.95초 | 0.022 | 27.86 |
+| VAD 쉼 1.75초 (지금 운영) | 901 | 0% | 1.75초 + 계산 | | |
+
+- **판정을 끄면 안 된다.** 확정이 없으면 확정 전 글자가 녹음 내내 쌓이고, 5배 넘게 느려졌다 (46분 vs 9분)
+- **판정은 글자에 영향이 없다.** 800, 1200ms 모두 CER이 판정을 껐을 때와 같다. 어디서 확정하느냐만 다르다
+- **모델 판정만으로 문장을 나누기에는 부족하다.** 800ms는 VAD가 한 문장으로 보는 구간의 절반을 중간에서 끊는다. 1200ms로 늘려도 3분의 1을 끊는데, 확정까지 걸리는 시간은 이미 VAD 1.75초와 비슷하다. 구음장애 화자가 말 중간에 1초 안팎으로 쉬기 때문이다
+- 1600, 2000ms 실행은 오류로 결과가 없다 (에이전트가 TypeError를 보고했지만 로그 원문은 남지 않았다). 필요하면 다시 잰다
+
+**권장: 섞은 방식**
+- 파이프라인은 `stop_history_eou=800`으로 둔다. 확정 전 글자를 짧게 유지해서 빠르게 돌게 하는 용도다. 이 확정은 앱에 문장 경계로 보내지 않는다
+- 앱에 보이는 문장(`segment_id`, `segment_final`)은 지금처럼 VAD 쉼 1.75초(marieum-ai `Segmenter`)로 나눈다. 구간이 닫히면 그 구간 동안 확정된 글자와 남은 확정 전 글자를 이어 `segment_final`로 보낸다
+- 글자는 `transcript_delta`로 0.32초마다 바로 보이므로, 문장 경계가 1.75초 늦어도 사용자는 기다리지 않는다
+- 서버 쪽 주의: 파이프라인 확정(`final_transcript`)과 VAD 구간 경계가 어긋날 수 있다. 확정된 글자를 시각(`final_segments`의 시작·끝)으로 VAD 구간에 나눠 붙이고, 걸치는 것은 끝 시각 기준으로 앞 구간에 붙인다
+- `Frame.vad_segments`로 VAD 구간을 파이프라인 판정에 넘기는 기능도 있다. 섞은 방식이 복잡하면 이것을 먼저 시험한다
 
 ### 3.5 설정 (환경변수)
 
@@ -138,8 +147,7 @@ GPU 작업자 (스레드 하나)
 | `ML_NEMO_MODEL` | (없음) | `.nemo` 경로 |
 | `ML_NEMO_ATT_CONTEXT` | `[56,3]` | 0.32초 |
 | `ML_NEMO_BATCH_MAX` | 8 | `streaming.batch_size` |
-| `ML_NEMO_ENDPOINTING` | `vad` | `vad`(3.4 B) / `model`(3.4 A). 실험 뒤 바꾼다 |
-| `ML_NEMO_EOU_MS` | 실험으로 정함 | `model`일 때 `stop_history_eou` |
+| `ML_NEMO_EOU_MS` | 800 | 파이프라인 `stop_history_eou` (글자 확정용, 3.4) |
 | `ML_NEMO_STEP_WAIT_MS` | 10 | 첫 Frame이 생긴 뒤 다른 세션 Frame을 기다리는 최대 시간 |
 | `ML_NEMO_MAX_BACKLOG_MS` | 5000 | 세션당 처리 못 한 오디오 한도 |
 | `ML_NEMO_MAX_SESSIONS` | 16 | 동시 세션 한도 (`num_slots`보다 작게) |
@@ -160,7 +168,7 @@ VAD·길이 설정(`ML_VAD_THRESHOLD`, `ML_END_SILENCE_MS`, `ML_UTTERANCE_MAX_S`
 | v1 메시지 | 만드는 법 |
 |---|---|
 | `transcript_interim` | `text` = 이 구간 `partial_transcript`. `stable_text` = 마지막 단어 앞까지, `unstable_text` = 마지막 단어 (마지막 단어는 "화장" → "화장실에"처럼 자랄 수 있다). 최소 300ms 간격 (프로토콜 §7.1) |
-| `transcript_final` | 구간이 끝날 때 (3.4 A 또는 B). `text` = 그 구간 글자 |
+| `transcript_final` | VAD 구간이 닫힐 때 (쉼 1.75초, 3.4). `text` = 그 구간 글자 |
 | `is_last` final | `end` → 마지막 Frame(`is_last=True`)의 결과 |
 | `confidence` | 파이프라인 신뢰도 (3.2) |
 | `no_speech_prob` | 값이 없다. 글자가 없으면 1.0, 있으면 0.0 |
@@ -200,8 +208,8 @@ VAD·길이 설정(`ML_VAD_THRESHOLD`, `ML_END_SILENCE_MS`, `ML_UTTERANCE_MAX_S`
 
 ## 6. 확인 순서
 
-1. **파이프라인이 같은 답을 내는가 (Colab L4, 약 1 CU):** NeMo `examples/asr/asr_streaming_inference/asr_streaming_infer.py`에 3.2 설정과 ft_v3로 test_v2를 돌려 이 레포 `eval/score.py`로 채점한다. EXP-010(28.4)과 0.5점 안이어야 한다. bf16 계산과 fp32+autocast를 둘 다 본다. 이때는 발화 끝 판정이 결과에 영향을 주지 않게 `stop_history_eou`를 크게(예: 100000) 둔다
-2. **문장 끊기 실험 (Colab L4):** 3.4의 A(800 / 1200 / 1600 / 2000ms)와 B(VAD 1.75초)를 녹음 30개 앞 3분에 돌린다. 구간 수, 한 문장이 쪼개지는지, final까지의 시간을 비교해 `ML_NEMO_ENDPOINTING`과 `ML_NEMO_EOU_MS`를 정한다. 숫자만 남기고 문장은 저장하지 않는다
+1. ~~파이프라인이 같은 답을 내는가~~ **끝 (11-17, EXP-015, 016):** bf16 27.86, fp32 + autocast 28.51. 예전 경로 28.42와 같은 수준
+2. ~~문장 끊기 실험~~ **끝 (EXP-017):** 3.4의 섞은 방식으로 간다. 1600, 2000ms는 오류로 못 쟀다
 3. **단위 테스트:** `ML_ENGINE=whisper`에서 기존 `pytest`가 모두 통과한다. 가짜 파이프라인(조각마다 정해진 글자를 내는)으로 v2 테스트를 만든다: `seq`와 구간 순서, `text`가 이어지는지, `revised` 처리, `end`, `OVERLOADED`
 4. **지연:** `scripts/stream_client_v2.py`(`stream_client.py`를 고쳐서)로 wav를 실제 속도로 보내 1, 4, 8세션을 잰다. 목표(제안): 말 끝 → 그 구간 마지막 delta p95 ≤ 800ms, 4세션에서 `OVERLOADED` 0, step p95 ≤ 160ms. Whisper 기록(marieum-ai `TEST_RESULTS.md`, 4세션 interim p95 283 ~ 380ms)과 나란히 적는다
 5. **정상 발화:** 구음장애가 없는 팀원 목소리로 문장 몇 개를 두 엔진에 넣어 본다. **아직 한 번도 안 쟀다.** 학습 데이터에 정상 발화가 1시간도 안 돼서 원래 모델보다 나빠졌을 수 있다. 녹음은 팀원 것만 쓰고 AI Hub 음성은 쓰지 않는다
@@ -247,7 +255,7 @@ Nemotron의 성질(글자가 조각마다 붙는다)에 맞춘 엔드포인트�
 |---|---|---|
 | 중간 결과 | `transcript_interim`: 0.5초마다 구간 전체를 다시 받아써서 보낸다 (`stable_text` + `unstable_text`) | `transcript_delta`: 0.32초 조각마다 **새로 붙은 글자**(`append`)와 구간 글자 전체(`text`) |
 | 말 시작 알림 | 없음 | `segment_start`. 첫 글자가 뜨기 전(p50 0.86초)에 앱이 "듣는 중"을 띄울 수 있다 |
-| 구간 final | `transcript_final` (VAD 쉼 1.75초) | `segment_final` (3.4에서 정한 방식, 시작·끝 시각, 닫힌 이유, 신뢰도) |
+| 구간 final | `transcript_final` (VAD 쉼 1.75초) | `segment_final` (VAD 쉼 1.75초, 시작·끝 시각, 닫힌 이유, 신뢰도) |
 | 세션 끝 | `is_last: true` final | `is_last: true` `segment_final` 뒤에 `session_end` |
 | 연결당 세션 | 여러 개 (trace_id로 구분) | **한 번에 하나**. 끝나면 같은 연결에서 다음 세션을 시작할 수 있다 |
 | 순서 번호 | 없음 | 세션 안 모든 메시지에 `seq` (1부터 1씩) |
@@ -296,8 +304,7 @@ NVIDIA Speech NIM Realtime API와 비교하면 `transcript_delta` ≈ `conversat
 ```
 
 **`segment_start`**: 새 발화가 시작됐다. `start_ms`는 세션 시작 기준 위치.
-- 3.4 B(VAD)면 VAD가 구간을 연 때 보낸다
-- 3.4 A(모델 판정)면 발화 끝 뒤 처음으로 글자가 생긴 때 보낸다. 이 경우 "듣는 중" 표시용으로 VAD를 따로 돌리지 않으면 더 일찍 알릴 방법이 없다. 필요하면 VAD는 알림용으로만 둔다
+- VAD가 구간을 연 때 보낸다 (3.4 섞은 방식)
 
 ```json
 {"type": "segment_start", "trace_id": "abc123", "seq": 2, "segment_id": 0, "start_ms": 1180}
@@ -321,13 +328,13 @@ NVIDIA Speech NIM Realtime API와 비교하면 `transcript_delta` ≈ `conversat
 
 ```json
 {"type": "segment_final", "trace_id": "abc123", "seq": 9, "segment_id": 0,
- "text": "안녕하세요 저는", "start_ms": 1180, "end_ms": 3420, "reason": "eou",
+ "text": "안녕하세요 저는", "start_ms": 1180, "end_ms": 3420, "reason": "silence",
  "confidence": 0.91, "no_speech_prob": 0.0, "is_last": false}
 ```
 
 - `text`가 그 발화의 기준 글자다. 앱은 표시를 이것으로 맞춘다 (보통 마지막 delta의 `text`와 같다)
-- `start_ms`, `end_ms`: 파이프라인 `final_segments` 시각 (3.4 B면 VAD 구간)
-- `reason`: `eou`(모델 판정) / `silence`(VAD 쉼) / `max_length` / `end` / `too_long`
+- `start_ms`, `end_ms`: VAD 구간의 말 시작과 말 끝
+- `reason`: `silence`(VAD 쉼) / `max_length` / `end` / `too_long`
 - 말소리가 있었는데 글자가 없으면 `text: ""`, `no_speech_prob: 1.0`
 - `confidence`: 파이프라인 신뢰도 (3.2). 백엔드가 쓰는 곳을 확인한다
 
@@ -368,8 +375,8 @@ NVIDIA Speech NIM Realtime API와 비교하면 `transcript_delta` ≈ `conversat
 ← {"type":"segment_start","seq":2,"segment_id":0,"start_ms":1180}
 ← {"type":"transcript_delta","seq":3,"segment_id":0,"append":"안녕","text":"안녕","revised":false,"audio_end_ms":2240}
 ← {"type":"transcript_delta","seq":4,"segment_id":0,"append":"하세요","text":"안녕하세요","revised":false,"audio_end_ms":2560}
-   … (말이 끝나고 발화 끝 판정)
-← {"type":"segment_final","seq":7,"segment_id":0,"text":"안녕하세요 …","end_ms":3420,"reason":"eou","is_last":false}
+   … (말 끝 3.42초, 쉼 1.75초)
+← {"type":"segment_final","seq":7,"segment_id":0,"text":"안녕하세요 …","end_ms":3420,"reason":"silence","is_last":false}
 ← {"type":"segment_start","seq":8,"segment_id":1,...}
    …
 → {"type":"end","trace_id":"t1"}
@@ -387,6 +394,6 @@ NVIDIA Speech NIM Realtime API와 비교하면 `transcript_delta` ≈ `conversat
 
 1. **엔진 코어** (`server/engine_nemotron.py`): 3.2 설정으로 파이프라인 만들기, 워밍업, Frame 만들기, GPU 작업자 (3.3). 6절 1단계를 여기서 통과시킨다
 2. **`/asr-stream/v2`**: 세션 ↔ `stream_id`, 결과 → 메시지 (9.4), 한도. 가짜 파이프라인으로 6절 3단계 테스트
-3. **문장 끊기** (3.4): 6절 2단계 실험 결과로 기본값을 정한다
+3. **문장 끊기** (3.4 섞은 방식): 파이프라인 확정을 VAD 구간에 나눠 붙이기
 4. **시험 클라이언트와 지연** (6절 4단계)
 5. (선택) **v1 어댑터** (3.7), `POST /asr`
