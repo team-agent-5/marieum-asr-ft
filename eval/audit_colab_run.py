@@ -21,12 +21,13 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 HIST = Path.home() / ".config" / "colab-cli" / "history"
-SESSIONS = ["smoke", "nemo", "seg", "train", "retx", "evalft", "stage0", "ftv2", "ftv3", "rt"]
+SESSIONS = ["smoke", "nemo", "seg", "train", "retx", "evalft", "stage0", "ftv2", "ftv3", "rt", "pipe"]
 RESULTS = ["work/eval/nemotron_zs_320ms/hyps.jsonl", "work/eval/whisper_yoonaj/hyps.jsonl",
            "work/eval/pilot_v1_320ms/hyps.jsonl", "work/eval/ft_v1_320ms/hyps.jsonl",
            "work/eval/ft_v1_vad_320ms/hyps.jsonl", "work/eval/yoonaj_vad/hyps.jsonl", "work/eval/ft_v1_1120ms/hyps.jsonl",
            "work/eval/ft_v2_1120ms/hyps.jsonl", "work/eval/ft_v2_320ms/hyps.jsonl",
            "work/eval/ft_v3_320ms/hyps.jsonl", "work/eval/ft_v3_1120ms/hyps.jsonl"]
+RESULTS += [f"work/eval/pipe_{n}/hyps.jsonl" for n in ("bf16_noeou", "amp_noeou", "eou800", "eou1200", "eou1600", "eou2000")]
 ok = True
 
 

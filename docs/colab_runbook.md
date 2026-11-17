@@ -690,3 +690,78 @@ colab --auth=oauth2 stop -s rt
 colab --auth=oauth2 sessions
 colab --auth=oauth2 usage
 ```
+
+# NeMo 스트리밍 파이프라인 확인 (11-17)
+
+[`docs/engine_handoff.md`](engine_handoff.md) 6절 1·2단계. 운영에 쓸 NeMo 공식 파이프라인(`CacheAwareRNNTPipeline`)으로 test_v2 30개 녹음 전체를 돌린다 (`colab/pipeline_eval.py`).
+
+| 이름 | 계산 | 발화 끝 판정 | 보는 것 |
+|---|---|---|---|
+| `pipe_bf16_noeou` | bf16 (파이프라인 기본) | 끔 | 예전 경로 EXP-010(28.4)과 CER이 같은가 |
+| `pipe_amp_noeou` | fp32 가중치 + autocast (예전 경로와 같음) | 끔 | 위와 같음 |
+| `pipe_eou800` ~ `pipe_eou2000` | bf16 | 800 / 1200 / 1600 / 2000ms | 문장을 어디서 끊는가, CER이 바뀌는가 |
+
+- 운영 VAD 구간(`pipe_vad.json`)도 같이 만든다. 비교는 이 PC에서 `eval/eou_compare.py`
+- 결과: `hyps.jsonl`(채점용), `eou.json`(확정 시각과 글자 수, 숫자만), `run_info.json`
+- 하나가 실패해도 다음 것은 돈다. 이 PC에서 설정 만들기와 VAD 구간 만들기를 점검했다
+- L4. 약 50분 (설치 15분, VAD 구간 10분, 6개 × 3 ~ 5분), 약 1.6 CU
+
+### 1. VM과 Drive (사용자)
+
+```bash
+colab --auth=oauth2 new -s pipe --gpu L4
+colab --auth=oauth2 drivemount -s pipe
+```
+
+### 2. 준비 (다시 보내도 되는 명령)
+
+```bash
+colab --auth=oauth2 usage
+echo 'import os; os.makedirs("/content/upload", exist_ok=True); print("ok")' | timeout 120 colab --auth=oauth2 exec -s pipe
+for f in work/upload/test_v2.tar.part-*; do timeout 900 colab --auth=oauth2 upload -s pipe "$f" "/content/upload/$(basename "$f")" || break; done
+for s in pipeline_eval.py streaming_metrics.py marieum_stream.py zeroshot_nemotron.py job.py; do timeout 120 colab --auth=oauth2 upload -s pipe colab/$s /content/$s; done
+timeout 120 colab --auth=oauth2 ls -s pipe /content/upload
+timeout 120 colab --auth=oauth2 ls -s pipe /content
+timeout 120 colab --auth=oauth2 ls -s pipe /content/drive/MyDrive/marieum-asr-ft/ckpt/ft_v3/v1/checkpoints
+```
+
+- 실패하면 `status`로 세션을 보고 같은 명령을 한 번 더. 두 번째도 실패하면 멈추고 보고
+- 확인할 것: `test_v2.tar.part-00`~`03`, 스크립트 5개, Drive에 `ft_v3.nemo`
+
+### 3. 시작 (한 번) 과 기다리기
+
+```bash
+echo 'import subprocess; p=subprocess.run("python /content/job.py start pipeline_eval.py", shell=True, capture_output=True, text=True); print(p.stdout, p.stderr)' | timeout 120 colab --auth=oauth2 exec -s pipe
+echo 'import subprocess; p=subprocess.run("python /content/job.py wait", shell=True, capture_output=True, text=True); print(p.stdout[-3000:], p.stderr[-2000:])' | colab --auth=oauth2 exec -s pipe
+```
+
+- 첫 명령은 `시작, pid ...`. 둘째(`wait`)는 백그라운드로 돌리고 다시 보내지 않는다
+
+### 4. 진행 확인 (15분마다, exec 없이)
+
+```bash
+colab --auth=oauth2 status -s pipe
+colab --auth=oauth2 ls -s pipe /content/drive/MyDrive/marieum-asr-ft/runs/eval
+colab --auth=oauth2 usage
+```
+
+- `runs/eval`에 `pipe_vad`, `pipe_bf16_noeou`, `pipe_amp_noeou`, `pipe_eou800`, `pipe_eou1200`, `pipe_eou1600`, `pipe_eou2000`이 차례로 생긴다
+- 연결이 끊기면 "ft_v3 이어 하기" 4단계와 같은 규칙 (`BUSY`면 둔다, `IDLE`이면 `job.py peek`, `도는 중`이면 `wait` 다시)
+
+### 5. 결과 받기와 반납
+
+```bash
+mkdir -p work/eval/pipe_vad && colab --auth=oauth2 download -s pipe /content/out/pipe_vad/pipe_vad.json work/eval/pipe_vad/pipe_vad.json
+for d in pipe_bf16_noeou pipe_amp_noeou pipe_eou800 pipe_eou1200 pipe_eou1600 pipe_eou2000; do mkdir -p work/eval/$d; for f in hyps.jsonl eou.json run_info.json; do colab --auth=oauth2 download -s pipe /content/out/$d/$f work/eval/$d/$f; done; done
+colab --auth=oauth2 stop -s pipe
+colab --auth=oauth2 sessions
+colab --auth=oauth2 usage
+```
+
+### 6. 채점 (이 PC)
+
+```bash
+python eval/audit_colab_run.py --expect-head <커밋>
+for d in pipe_bf16_noeou pipe_amp_noeou pipe_eou800 pipe_eou1200 pipe_eou1600 pipe_eou2000; do python eval/score.py --hyps work/eval/$d/hyps.jsonl --out work/eval/$d; done
+python eval/eou_compare.py --runs pipe_eou800 pipe_eou1200 pipe_eou1600 pipe_eou2000
+```
