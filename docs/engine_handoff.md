@@ -8,6 +8,7 @@
 - **무엇을:** marieum-ai의 Whisper 엔진(yoona-J) 옆에 Nemotron 스트리밍 엔진을 붙이고, 환경변수 하나로 고른다. 기본값은 지금처럼 Whisper다
 - **왜:** 정확도는 yoona-J와 비슷하다. 실시간 표시는 확실히 낫다 (화면 글자 바뀜 0%, 말이 끝나고 0.26초 뒤 문장 완성, 반복 루프 0)
 - **일정:** 11-21 교체 판정, 11-22 ~ 24 연결·배포, 11-25 리허설, 11-26 시연. 판정 전에는 기본값을 Whisper로 둔다
+- **두 가지 길:** 지금 `/asr-stream`에 끼워 넣기 (3절), 또는 Nemotron에 맞춘 새 엔드포인트 `/asr-stream/v2` (9절, 새 글자만 보내는 메시지). 엔진 코어는 같다
 - **끝난 모습:** `ML_ENGINE=nemotron`으로 띄우면 같은 WebSocket 프로토콜로 interim/final이 나간다. `ML_ENGINE=whisper`로 되돌리면 지금과 똑같다. 4세션 동시 지연 시험과 정상 발화 확인까지 마친다 (6절)
 
 ## 1. 모델
@@ -147,3 +148,253 @@ marieum-ai 구조: `server/app.py`가 세션 관리, `server/stream.py`(Segmente
 | [`docs/plan.md`](plan.md) | 날짜별 기록과 결정 |
 | marieum-ai `CALIBRATION.md` §0 | 지금 프로토콜, 설정, 실측 |
 | marieum-ai `TEST_RESULTS.md` | 지연 목표와 Whisper 기록 |
+
+## 9. 새 WebSocket 엔드포인트 `/asr-stream/v2` (예시 스펙)
+
+3절은 **지금 엔드포인트 `/asr-stream`(v1)에 Nemotron을 끼워 넣는 방법**이다. 이 절은 Nemotron의 성질(글자가 덧붙기만 한다)에 맞춘 **새 엔드포인트**를 따로 두는 안이다. 두 안은 같은 엔진 코어(9.5)를 쓴다.
+
+- `/asr-stream`(v1)은 그대로 둔다. 메시지와 동작이 바뀌지 않으므로 지금 앱과 백엔드는 그대로 돈다
+- `/asr-stream/v2`는 `ML_ENGINE=nemotron`일 때만 연다 (Whisper일 때 연결하면 `MODEL_UNAVAILABLE`로 닫는다)
+- 백엔드가 v2로 옮기면 앱이 interim 교체나 확정분 계산을 하지 않아도 된다. 서버가 보낸 새 글자를 뒤에 붙이기만 하면 된다
+
+### 9.1 v1과 다른 점
+
+| | `/asr-stream` (v1) | `/asr-stream/v2` |
+|---|---|---|
+| 중간 결과 | `transcript_interim`: 구간 전체 글자를 매번 다시 보낸다 (`stable_text` + `unstable_text`) | `transcript_delta`: **새로 붙은 글자만** 보낸다 (`append`). 앞서 보낸 글자는 바뀌지 않는다 |
+| 보내는 때 | 0.5초마다 구간 전체를 다시 받아쓴 뒤 | 0.32초 조각을 처리해서 글자가 늘었을 때 |
+| 말 시작 알림 | 없음 | `segment_start` (VAD가 말소리를 잡은 때). 첫 글자가 뜨기 전(p50 0.86초)에 앱이 "듣는 중"을 띄울 수 있다 |
+| 구간 final | `transcript_final` | `segment_final` (구간 글자 전체, 시작·끝 시각, 닫힌 이유) |
+| 세션 끝 | `is_last: true` final | `segment_final`의 `is_last: true` 뒤에 `session_end` (요약 숫자) |
+| 연결당 세션 | 여러 개 (trace_id로 구분, 바이너리는 최근 `start` 세션) | **한 번에 하나**. 끝나면 같은 연결에서 다음 세션을 시작할 수 있다 |
+| 순서 번호 | 없음 | 세션 안 모든 메시지에 `seq` (1부터 1씩 증가) |
+
+### 9.2 연결
+
+- URL: `ws://<ML 서버>:8001/asr-stream/v2`. 접근 제한은 v1과 같다 (marieum-ai `CALIBRATION.md` §3 보안그룹)
+- 연결 직후 서버가 먼저 보내는 것은 없다. 클라이언트가 `start`를 보낸다
+- 모델이 준비 안 됐으면 `error`(`MODEL_UNAVAILABLE`, `fatal: true`) 뒤 1013으로 닫는다 (v1과 같다)
+
+### 9.3 클라이언트 → 서버
+
+**`start`** (텍스트, JSON)
+
+```json
+{"type": "start", "trace_id": "abc123", "encoding": "pcm16", "sample_rate": 16000,
+ "mode": "conversation", "language": "ko", "patient_id": "p-01"}
+```
+
+| 필드 | 필수 | 값 |
+|---|---|---|
+| `trace_id` | 예 | 영문·숫자·`_-` 64자 이내 (v1 `TRACE_RE`와 같다) |
+| `encoding` | 아니오 | `pcm16`만 (기본) |
+| `sample_rate` | 예 | 8000 ~ 48000 정수. 16000 권장 (다르면 서버가 16kHz로 바꾼다) |
+| `mode` | 아니오 | `conversation`(기본): 쉼마다 구간 final, 세션은 계속. `utterance`: 세션 하나가 발화 하나, `end`에서 final 하나 |
+| `language` | 아니오 | `ko`만 |
+| `patient_id` | 아니오 | 로그용 64자 |
+
+**오디오** (바이너리): PCM16 little-endian 모노. 프레임 크기는 아무거나 받는다. 20 ~ 100ms 권장. 실제 속도로 보낸다 (빨리 보내면 9.5.5의 밀림 한도에 걸릴 수 있다).
+
+**`end`**: `{"type": "end", "trace_id": "abc123"}`. 남은 오디오를 끝까지 처리하고 마지막 구간을 닫는다.
+
+**`ping`**: `{"type": "ping", "trace_id": "abc123"}` → `pong`.
+
+### 9.4 서버 → 클라이언트
+
+모든 메시지에 `type`, `trace_id`, `seq`가 붙는다 (`pong`, 세션 밖 `error`는 `seq` 없음).
+
+**`ready`**: `start`를 받아 세션을 만들었다.
+
+```json
+{"type": "ready", "trace_id": "abc123", "seq": 1, "engine": "nemotron",
+ "model_version": "marieum-nemotron-ft_v3", "chunk_ms": 320, "sample_rate": 16000}
+```
+
+**`segment_start`**: VAD가 새 구간을 열었다. `start_ms`는 세션 시작 기준 말소리 시작 위치 (앞 여유 200ms 포함).
+
+```json
+{"type": "segment_start", "trace_id": "abc123", "seq": 2, "segment_id": 0, "start_ms": 1180}
+```
+
+**`transcript_delta`**: 글자가 새로 붙었다.
+
+```json
+{"type": "transcript_delta", "trace_id": "abc123", "seq": 3, "segment_id": 0,
+ "append": "안녕하", "text": "안녕하", "audio_end_ms": 2240}
+```
+
+| 필드 | 뜻 |
+|---|---|
+| `append` | 이번에 새로 붙은 글자. **앱은 이 구간 글자 뒤에 그대로 붙인다.** 앞에 공백이 올 수도 있고(새 단어), 없이 단어 안에서 이어질 수도 있다 |
+| `text` | 이 구간에서 지금까지 붙은 글자 전체. 메시지를 놓쳤을 때 맞추는 용도. 항상 `이전 text + append`와 같다 |
+| `audio_end_ms` | 이 글자를 낼 때까지 처리한 오디오의 끝 (세션 시작 기준). 지연 측정용 |
+
+**`segment_final`**: 구간이 닫혔다 (쉼 1.75초, 최대 15초, 또는 `end`). 이 뒤로 이 구간의 `transcript_delta`는 오지 않는다.
+
+```json
+{"type": "segment_final", "trace_id": "abc123", "seq": 9, "segment_id": 0,
+ "text": "안녕하세요 저는", "start_ms": 1180, "end_ms": 3420, "reason": "silence",
+ "confidence": null, "no_speech_prob": 0.0, "is_last": false}
+```
+
+- `text`는 그 구간의 `transcript_delta`를 모두 이은 것과 같다 (다시 받아쓰지 않는다). 앱은 확정 표시만 하면 된다
+- `end_ms` = 마지막 말소리 위치 (+ 뒤 여유 200ms). 쉼을 기다린 1.75초는 들어가지 않는다
+- `reason`: `silence` / `max_length` / `end` / `too_long`
+- 말소리가 있었는데 글자가 없으면 `text: ""`, `no_speech_prob: 1.0`
+- `confidence`는 3.3절의 열린 질문이다. 정하기 전에는 `null`로 보낸다
+
+**`session_end`**: `is_last: true`인 `segment_final` 다음에 한 번.
+
+```json
+{"type": "session_end", "trace_id": "abc123", "seq": 10, "segments": 3, "audio_ms": 18320}
+```
+
+**`error`**
+
+```json
+{"type": "error", "trace_id": "abc123", "seq": 5, "code": "OVERLOADED", "message": "...", "fatal": true}
+```
+
+| code | 뜻 | fatal |
+|---|---|---|
+| `INVALID_FORMAT` | JSON, 필드, 형식 오류 (v1과 같다) | 아니오 (세션을 안 만든다) |
+| `NO_SESSION` | `start` 없이 오디오나 `end` (v1과 같다) | 아니오 |
+| `SESSION_BUSY` | 세션이 진행 중인데 다른 `trace_id`로 `start` | 아니오 |
+| `MODEL_UNAVAILABLE` | 모델 로딩 중이거나 `ML_ENGINE`이 nemotron이 아님 | 예 (연결 닫음) |
+| `AUDIO_TOO_LONG` | `utterance` 10초, `conversation` 600초 초과 (v1과 같다). 남은 구간을 `too_long` final로 닫는다 | 예 (세션 끝) |
+| `OVERLOADED` | 처리 못 한 오디오가 밀림 한도(9.5.5)를 넘었거나, 동시 세션이 한도에 찼다 | 밀림이면 예 (세션 끝), 세션 한도면 아니오 |
+| `INTERNAL` | 서버 오류 | 예 (세션 끝) |
+
+**순서 보장**
+- 한 세션 안에서 `seq`는 1씩 늘고, 메시지는 `seq` 순서로 온다
+- 구간마다 `segment_start` → `transcript_delta` 0개 이상 → `segment_final` 순서다. 구간 k의 `segment_final`은 구간 k+1의 `segment_start`보다 먼저 온다
+- 앞서 보낸 글자를 고치는 메시지는 없다
+
+### 9.5 서버 파이프라인
+
+```
+WebSocket 받기 (이벤트 루프)
+  │ 바이너리
+  ▼
+[vad 스레드] PCM16 → float → 16kHz 변환 → 32ms 창마다 Silero VAD           (v1 on_audio와 같다)
+  │ (창, 확률)
+  ▼
+[이벤트 루프] Segmenter.push_windows → 구간 열림: segment_start 보냄
+  │                                     구간 닫힘: FinalGate에 등록 (9.5.4)
+  │ 16kHz 음성 (VAD 결과와 상관없이 전부)
+  ▼
+[이벤트 루프] FeatureFrontend.push(음성) → 새 특징 32프레임(0.32초)마다 Chunk 하나 → 세션 큐
+  │
+  ▼
+[GPU 스레드 1개] GpuStepper: 준비된 세션의 Chunk를 최대 ML_NEMO_BATCH_MAX개 묶어
+                 conformer_stream_step 한 번 → 세션별 캐시·가설 갱신 → 새 글자
+  │ (세션, 새 글자, audio_end_ms)
+  ▼
+[이벤트 루프] 세션: 열린 구간에 글자를 붙이고 transcript_delta 보냄 → FinalGate 확인 → segment_final
+```
+
+#### 9.5.1 세션 상태
+
+| 항목 | 내용 |
+|---|---|
+| `segmenter` | v1과 같은 `Segmenter` (VAD 확률, 구간 번호, 닫힘) |
+| `frontend` | 아직 특징으로 못 바꾼 음성 꼬리, 지금까지 만든 특징 프레임 수, 앞 조각 특징 끝 몇 프레임 (pre-encode 캐시) |
+| `cache` | `cache_last_channel`, `cache_last_time`, `cache_last_channel_len` (배치 1짜리 텐서, GPU에 둔다) |
+| `hyp`, `pred_out` | `previous_hypotheses`, `previous_pred_out`의 이 세션 몫 |
+| `emitted` | 가설 글자 중 이미 보낸 길이 |
+| `processed_ms` | GPU가 처리한 오디오 끝 위치 |
+| `open_seg` | 지금 열린 구간 번호와 그 구간 글자 (없으면 None) |
+| `orphan` | 열린 구간이 없을 때 생긴 글자 (9.5.4) |
+| `queue` | 처리를 기다리는 Chunk 목록 |
+
+#### 9.5.2 특징 만들기 (FeatureFrontend)
+
+- NeMo 전처리기(`AudioToMelSpectrogramPreprocessor`)를 그대로 쓴다. 10ms 홉, 25ms 창, pre-emphasis 0.97, STFT center. 평가 모드에서는 dither가 꺼진다 (NeMo `features.py`, training일 때만 켠다). 정규화는 `NA`
+- 조금씩 들어오는 음성에 바로 돌리면 조각 경계에서 값이 달라진다 (STFT 가장자리 채우기, pre-emphasis가 앞 샘플을 쓴다). 그래서:
+  1. 지금까지의 음성에서 **앞쪽 여유 몇 프레임을 붙여** 잘라 낸다
+  2. 그 조각에 전처리기를 돌린다
+  3. 가장자리 프레임을 버리고 **새로 확정된 프레임만** 쌓는다
+- 프레임 f는 샘플 `f×160 ± 200`이 다 들어와야 확정된다 (약 12.5ms 늦음, 무시해도 된다)
+- **확인:** test 클립을 100ms씩 넣어 만든 특징이 파일 전체로 만든 특징(`CacheAwareStreamingAudioBuffer.append_audio_file`)과 같아야 한다. 차이 최댓값을 테스트로 남긴다
+
+#### 9.5.3 조각 만들기와 GPU 묶기 (GpuStepper)
+
+- 새 특징 32프레임마다 Chunk 하나를 만든다: `앞 조각 특징 끝 P프레임 + 새 32프레임`
+  - P = `streaming_cfg.pre_encode_cache_size` (리스트면 `[1]`). 세션 첫 조각은 앞을 0으로 채운다
+  - `pad_and_drop_preencoded=True`와 같은 방식이고, 평가 숫자도 이 방식으로 나왔다
+  - 덕분에 모든 Chunk의 길이가 같아 세션 여러 개를 쌓을 수 있다
+- GpuStepper 한 번:
+  1. 큐가 빈 세션은 건너뛴다. **세션마다 가장 오래된 Chunk 하나씩**을 오래 기다린 순으로 최대 `ML_NEMO_BATCH_MAX`개 고른다. 세션 안에서는 조각 순서가 중요해서 한 번에 하나만 꺼낸다
+  2. 첫 Chunk가 생긴 뒤 `ML_NEMO_STEP_WAIT_MS`(기본 10ms)가 지나면 모인 만큼 돌린다
+  3. 특징 `[B, 80, P+32]`, 길이 `[B]`, 캐시를 배치 축으로 이어 붙인다. `cache_last_channel`과 `cache_last_time`은 축 1, `cache_last_channel_len`은 축 0이다. 모양은 `get_initial_cache_state(batch_size)`로 확인한다
+  4. `torch.autocast("cuda", bfloat16)` 안에서 `conformer_stream_step(..., keep_all_outputs=False, previous_hypotheses=[세션별], previous_pred_out=[세션별], drop_extra_pre_encoded=streaming_cfg.drop_extra_pre_encoded, return_transcription=True)`
+  5. 캐시를 세션별로 다시 나눠 넣는다. 세션별 가설 글자에서 `emitted` 뒤를 새 글자로 꺼내고 `processed_ms`를 늘린다
+- 마지막 조각(`end`, `too_long`): 남은 프레임이 32보다 짧으면 그 세션만 따로 `keep_all_outputs=True`로 돌린다 (묶지 않는다)
+- 계산은 GPU 스레드 하나에서만 한다. 이벤트 루프는 결과를 `loop.call_soon_threadsafe`로 받는다
+- 실측 기준 (EXP-013): 4세션 묶음 조각 하나 62ms, 실시간은 320ms. 여유가 크지만 8세션 이상은 재 봐야 한다
+
+#### 9.5.4 글자를 구간에 붙이기와 final (FinalGate)
+
+- 새 글자가 나왔을 때:
+  - 열린 구간이 있으면 그 구간에 붙이고 `transcript_delta`를 보낸다
+  - 열린 구간이 없으면 `orphan`에 모은다. 다음 `segment_start` 바로 뒤 첫 `transcript_delta`로 보낸다. 세션이 끝날 때까지 구간이 안 열리면 버리고, 로그에 `orphan_chars` 숫자만 남긴다
+- 구간이 닫혀도(Segmenter) 바로 `segment_final`을 보내지 않는다. **GPU가 그 구간이 닫힌 위치까지 처리했을 때**(`processed_ms ≥ 구간 close 위치`) 보낸다. 실시간이면 구간이 닫힐 때(말 끝 + 1.75초) 이미 처리가 끝나 있어서 기다리지 않는다. 밀릴 때만 기다린다
+- 쉼 1.75초 동안 생긴 글자도 그 구간에 붙는다 (말이 끝나고 마지막 글자가 붙기까지 p95 0.64초)
+- 15초 상한으로 잘린 구간(`max_length`)은 그 위치까지 처리된 글자로 닫고, 뒤 글자는 다음 구간으로 간다. 단어 하나가 둘로 갈릴 수 있다
+
+#### 9.5.5 밀림과 한도
+
+| 한도 | 기본값 | 넘으면 |
+|---|---|---|
+| 처리 못 한 오디오 (`queue` 길이 × 0.32초) | `ML_NEMO_MAX_BACKLOG_MS=5000` | `OVERLOADED`, 세션 끝 |
+| 동시 세션 | `ML_NEMO_MAX_SESSIONS=16` | 새 `start`에 `OVERLOADED` (fatal 아님, 세션을 안 만든다) |
+| 세션 길이 | v1과 같다 (utterance 10초, conversation 600초) | `AUDIO_TOO_LONG` |
+
+오디오를 실제 속도보다 빨리 보내면(파일 재생) 큐가 쌓이고, 5초 넘게 앞서면 `OVERLOADED`가 난다. 파일은 `POST /asr`를 쓴다.
+
+### 9.6 설정 추가
+
+| 변수 | 기본값 | 의미 |
+|---|---|---|
+| `ML_NEMO_STEP_WAIT_MS` | 10 | 첫 Chunk가 생긴 뒤 다른 세션 Chunk를 기다리는 최대 시간 |
+| `ML_NEMO_MAX_BACKLOG_MS` | 5000 | 세션당 처리 못 한 오디오 한도 |
+| `ML_NEMO_MAX_SESSIONS` | 16 | v2 동시 세션 한도 |
+
+- `ML_ENGINE`, `ML_NEMO_MODEL`, `ML_NEMO_ATT_CONTEXT`, `ML_NEMO_BATCH_MAX`는 3.1절에 있다
+- VAD·구간 설정(`ML_VAD_THRESHOLD`, `ML_END_SILENCE_MS`, `ML_MAX_SEGMENT_S` 등)은 v1과 같은 값을 같이 쓴다
+- `/healthz`에 `engine`, `v2_sessions`, `step_ms_p95`, `batch_mean`을 더한다
+
+### 9.7 예: 대화 모드 한 세션
+
+예시 글자는 지어낸 것이다.
+
+```
+→ {"type":"start","trace_id":"t1","sample_rate":16000,"mode":"conversation"}
+← {"type":"ready","seq":1,"chunk_ms":320,...}
+→ (오디오 100ms씩)
+← {"type":"segment_start","seq":2,"segment_id":0,"start_ms":1180}
+← {"type":"transcript_delta","seq":3,"segment_id":0,"append":"안녕","text":"안녕","audio_end_ms":2240}
+← {"type":"transcript_delta","seq":4,"segment_id":0,"append":"하세요","text":"안녕하세요","audio_end_ms":2560}
+   … (말 끝 3.42초, 쉼 1.75초)
+← {"type":"segment_final","seq":7,"segment_id":0,"text":"안녕하세요 …","end_ms":3420,"reason":"silence","is_last":false}
+← {"type":"segment_start","seq":8,"segment_id":1,...}
+   …
+→ {"type":"end","trace_id":"t1"}
+← {"type":"segment_final","seq":15,"segment_id":2,...,"reason":"end","is_last":true}
+← {"type":"session_end","seq":16,"segments":3,"audio_ms":18320}
+```
+
+### 9.8 로그 (글자는 찍지 않는다)
+
+- 구간마다 `segment_final` 로그: `speech_ms`, `first_delta_ms`(말 시작 → 첫 delta), `final_wait_ms`(구간 닫힘 → final, 밀림), `chars`, `deltas`, `orphan_chars`, `reason`
+- 10초마다: `v2_sessions`, `step_ms` p50/p95, `batch_mean`, 가장 긴 `queue`
+- 형식은 v1과 같다 (JSON 한 줄, `trace_id`, `latency_ms`)
+
+### 9.9 만들기와 확인 순서
+
+1. **엔진 코어** (`server/engine_nemotron.py`): 모델 불러오기(2절), FeatureFrontend, 배치 1짜리 `step`. 여기서 특징 같음 확인(9.5.2)과 결과 같음 확인(6절 1단계)을 통과시킨다
+2. **GpuStepper**: 세션 여러 개 묶기. 배치 4로 돌린 결과가 배치 1로 하나씩 돌린 결과와 같은지 본다
+3. **`/asr-stream/v2`**: 세션 상태, FinalGate, 메시지, 한도. 가짜 엔진(조각마다 정해진 글자를 내는)으로 단위 테스트를 만든다: `seq`와 구간 순서, `text = 이전 text + append`, final이 delta를 이은 것과 같은지, orphan, `end` 처리, `OVERLOADED`
+4. **시험 클라이언트** (`scripts/stream_client_v2.py`, `stream_client.py`를 고쳐서): wav를 실제 속도로 보내고 `segment_start`, `transcript_delta`, `segment_final`의 도착 시각을 잰다. 1, 4, 8세션
+5. **목표 (제안)**: 말 끝 → 그 구간 마지막 delta p95 ≤ 800ms, `segment_final`은 쉼 1.75초 + 100ms 안, 4세션에서 `OVERLOADED` 0, step p95 ≤ 160ms (조각 시간의 절반)
+6. **v1 어댑터** (3절): 같은 코어 위에서 `transcript_delta`를 `transcript_interim`(구간 `text` 전체, `stable_text`는 마지막 단어 앞까지)으로, `segment_final`을 `transcript_final`로 바꿔 `/asr-stream`에도 붙일 수 있다. 백엔드가 v2로 옮기기 전까지의 다리다
