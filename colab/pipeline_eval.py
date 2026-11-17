@@ -25,6 +25,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 os.environ.setdefault("CLIP_S", "100000")  # streaming_metrics가 녹음 전체를 읽게
+os.environ.setdefault("NEMO_REF", "eaf0098dde")  # 핸드오프에 적은 NeMo 버전 (rt 측정 때와 같은 커밋)
 import zeroshot_nemotron as Z  # noqa: E402  unpack(), install(), 경로
 import streaming_metrics as M  # noqa: E402  운영 Segmenter로 VAD 구간 만들기
 
