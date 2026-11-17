@@ -17,7 +17,7 @@ import os
 import subprocess
 import time
 
-DRIVE = "/content/drive/MyDrive/marieum-asr-ft"
+DRIVE = "/content/drive/MyDrive/cdy-hack-ag5/marieum-asr-ft"
 FT2 = f"{DRIVE}/ckpt/ft_v2/v1/checkpoints/ft_v2.nemo"
 TRAIN = {"BASE_MODEL": FT2, "RUN_NAME": "ft_v3", "MAX_STEPS": "2000", "LR": "1.5e-5", "WARMUP": "100",
          "TRAIN_MANIFEST": "train_v5.jsonl", "VAL_MANIFEST": "val_v3.jsonl", "MAX_DURATION": "25"}

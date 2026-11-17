@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 학습 녹음(work/train_audio, 약 4.5GB)을 브라우저로 Drive에 올릴 1GB 조각으로 묶는다. 정답은 넣지 않는다.
 #   bash colab/pack_train.sh
-# 올릴 곳: Google Drive  marieum-asr-ft/data/   (VM에서는 /content/drive/MyDrive/marieum-asr-ft/data)
+# 올릴 곳: Google Drive  marieum-asr-ft/data/   (VM에서는 /content/drive/MyDrive/cdy-hack-ag5/marieum-asr-ft/data)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 out=work/upload

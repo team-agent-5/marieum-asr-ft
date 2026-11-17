@@ -23,7 +23,7 @@ import sys
 import time
 from pathlib import Path
 
-DRIVE = Path("/content/drive/MyDrive/marieum-asr-ft")
+DRIVE = Path("/content/drive/MyDrive/cdy-hack-ag5/marieum-asr-ft")
 AUDIO = Path("/content/train_audio")
 NEMO = Path("/content/NeMo")
 BASE = os.environ.get("BASE_MODEL", "nvidia/nemotron-3.5-asr-streaming-0.6b")

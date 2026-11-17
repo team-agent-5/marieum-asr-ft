@@ -20,7 +20,7 @@
 | | |
 |---|---|
 | 파일 | `ft_v3.nemo` (2,553,098,240 바이트) |
-| 위치 | 팀 Google Drive `marieum-asr-ft/ckpt/ft_v3/v1/checkpoints/ft_v3.nemo`. 소유자가 필요한 사람에게만 지정 공유한다 |
+| 위치 | 팀 Google Drive `cdy-hack-ag5/marieum-asr-ft/ckpt/ft_v3/v1/checkpoints/ft_v3.nemo`. 소유자가 필요한 사람에게만 지정 공유한다 |
 | 만든 방법 | Nemotron 3.5 ASR Streaming 0.6B → ft_v1 (3000 step) → ft_v2 (+2000) → ft_v3 (+2000). [`docs/plan.md`](plan.md) |
 | 설정 | `att_context_size=[56,3]` (0.32초 조각), 언어 프롬프트 `ko-KR`, 언어 태그 제거, RNNT greedy |
 | 시험한 NeMo | GitHub NVIDIA/NeMo main `eaf0098dde` (2026-11-16, 3.1.0 계열). Colab 기본 torch 위에 `pip install -e NeMo[asr]` |

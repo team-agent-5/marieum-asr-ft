@@ -14,7 +14,7 @@ import os
 import subprocess
 import time
 
-FT = "/content/drive/MyDrive/marieum-asr-ft/ckpt/ft_v1/v1/checkpoints/ft_v1.nemo"
+FT = "/content/drive/MyDrive/cdy-hack-ag5/marieum-asr-ft/ckpt/ft_v1/v1/checkpoints/ft_v1.nemo"
 RUNS = [
     ("B", "eval_segmented.py", {"MODE": "nemo", "MODEL": FT, "OUT_NAME": "ft_v1_vad_320ms"}),
     ("A", "eval_segmented.py", {"MODE": "whisper", "OUT_NAME": "yoonaj_vad"}),

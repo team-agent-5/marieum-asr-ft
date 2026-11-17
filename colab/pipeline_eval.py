@@ -28,7 +28,7 @@ os.environ.setdefault("CLIP_S", "100000")  # streaming_metrics가 녹음 전체�
 import zeroshot_nemotron as Z  # noqa: E402  unpack(), install(), 경로
 import streaming_metrics as M  # noqa: E402  운영 Segmenter로 VAD 구간 만들기
 
-DRIVE = Path("/content/drive/MyDrive/marieum-asr-ft")
+DRIVE = Path("/content/drive/MyDrive/cdy-hack-ag5/marieum-asr-ft")
 MODEL = os.path.expanduser(os.environ.get("MODEL", str(DRIVE / "ckpt/ft_v3/v1/checkpoints/ft_v3.nemo")))
 BATCH = int(os.environ.get("BATCH", "32"))
 NO_EOU = 100_000_000  # 발화 끝 판정을 사실상 끈다 (녹음 끝에서만 확정)

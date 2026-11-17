@@ -440,7 +440,7 @@ def main():
         w.writerows(rows)
     json.dump(info, open(OUT / "summary.json", "w"), indent=1)
     print(json.dumps(info, ensure_ascii=False), flush=True)
-    drive = Path("/content/drive/MyDrive/marieum-asr-ft")
+    drive = Path("/content/drive/MyDrive/cdy-hack-ag5/marieum-asr-ft")
     if drive.exists():
         keep = drive / "runs/eval" / OUT.name
         keep.mkdir(parents=True, exist_ok=True)

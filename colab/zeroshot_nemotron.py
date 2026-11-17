@@ -121,7 +121,7 @@ def main():
     json.dump(info, open(OUT / "run_info.json", "w"), indent=1)
     print(json.dumps(info, ensure_ascii=False))
     # 11-16 평가 끝무렵 VM이 회수돼 결과를 잃었다. Drive가 연결돼 있으면 바로 복사해 둔다
-    drive = Path("/content/drive/MyDrive/marieum-asr-ft")
+    drive = Path("/content/drive/MyDrive/cdy-hack-ag5/marieum-asr-ft")
     if drive.exists():
         keep = drive / "runs/eval" / OUT.name
         keep.mkdir(parents=True, exist_ok=True)

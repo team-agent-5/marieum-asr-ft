@@ -19,7 +19,7 @@ import time
 from pathlib import Path
 
 AUDIO = Path(os.environ.get("AUDIO", "/content/train_audio"))
-OUT = Path(os.environ.get("OUT", "/content/drive/MyDrive/marieum-asr-ft/runs/segments"))
+OUT = Path(os.environ.get("OUT", "/content/drive/MyDrive/cdy-hack-ag5/marieum-asr-ft/runs/segments"))
 MODEL = "yoona-J/ASR_Whisper_Disease_General"
 SR = 16000
 MAX_SEG_S = 20.0  # 구간 최대 길이

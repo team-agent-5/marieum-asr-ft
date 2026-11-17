@@ -14,7 +14,7 @@ import os
 import subprocess
 import time
 
-FT3 = "/content/drive/MyDrive/marieum-asr-ft/ckpt/ft_v3/v1/checkpoints/ft_v3.nemo"
+FT3 = "/content/drive/MyDrive/cdy-hack-ag5/marieum-asr-ft/ckpt/ft_v3/v1/checkpoints/ft_v3.nemo"
 RUNS = [
     ("yoonaj", {"MODE": "whisper", "OUT_NAME": "rt_yoonaj"}),
     ("ft_v3_320ms", {"MODE": "nemo", "MODEL": FT3, "ATT_CONTEXT": "[56,3]", "OUT_NAME": "rt_ft_v3_320ms"}),

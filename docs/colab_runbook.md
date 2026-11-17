@@ -135,9 +135,9 @@ colab --auth=oauth2 drivemount -s seg
 > 끝나도 VM 안 작업은 계속된다 (제로샷 때 확인). 진행은 D단계처럼 커널을 거치지 않고 확인한다.
 
 ```bash
-echo 'import subprocess; subprocess.run("cat /content/drive/MyDrive/marieum-asr-ft/data/train_audio.tar.part-* | tar -x -C /content", shell=True, check=True); import os; print(len(os.listdir("/content/train_audio")), "speakers")' | colab --auth=oauth2 exec -s seg
+echo 'import subprocess; subprocess.run("cat /content/drive/MyDrive/cdy-hack-ag5/marieum-asr-ft/data/train_audio.tar.part-* | tar -x -C /content", shell=True, check=True); import os; print(len(os.listdir("/content/train_audio")), "speakers")' | colab --auth=oauth2 exec -s seg
 colab --auth=oauth2 upload -s seg colab/segment_transcribe.py /content/segment_transcribe.py
-echo 'import subprocess, os; d="/content/drive/MyDrive/marieum-asr-ft/runs/segments"; os.makedirs(d, exist_ok=True); p=subprocess.run("python /content/segment_transcribe.py >> "+d+"/run.log 2>&1", shell=True); print("exit", p.returncode)' | colab --auth=oauth2 exec -s seg
+echo 'import subprocess, os; d="/content/drive/MyDrive/cdy-hack-ag5/marieum-asr-ft/runs/segments"; os.makedirs(d, exist_ok=True); p=subprocess.run("python /content/segment_transcribe.py >> "+d+"/run.log 2>&1", shell=True); print("exit", p.returncode)' | colab --auth=oauth2 exec -s seg
 ```
 
 - 첫 줄 출력이 `278 speakers`여야 한다
@@ -148,8 +148,8 @@ echo 'import subprocess, os; d="/content/drive/MyDrive/marieum-asr-ft/runs/segme
 
 ```bash
 colab --auth=oauth2 status -s seg
-colab --auth=oauth2 download -s seg /content/drive/MyDrive/marieum-asr-ft/runs/segments/progress.txt work/segments/progress.txt && cat work/segments/progress.txt
-colab --auth=oauth2 ls -s seg /content/drive/MyDrive/marieum-asr-ft/runs/segments
+colab --auth=oauth2 download -s seg /content/drive/MyDrive/cdy-hack-ag5/marieum-asr-ft/runs/segments/progress.txt work/segments/progress.txt && cat work/segments/progress.txt
+colab --auth=oauth2 ls -s seg /content/drive/MyDrive/cdy-hack-ag5/marieum-asr-ft/runs/segments
 ```
 
 - `status`가 BUSY여야 정상이다. IDLE인데 `DONE`이 없으면 작업이 죽은 것이다. 그때 `run.log`를 내려받아 끝부분의 오류만 보고한다
@@ -160,7 +160,7 @@ colab --auth=oauth2 ls -s seg /content/drive/MyDrive/marieum-asr-ft/runs/segment
 ## E. 결과 받기와 반납
 
 ```bash
-echo 'import subprocess; subprocess.run("tar -czf /content/segments.tgz -C /content/drive/MyDrive/marieum-asr-ft/runs segments", shell=True, check=True); import os; print(os.path.getsize("/content/segments.tgz"))' | colab --auth=oauth2 exec -s seg
+echo 'import subprocess; subprocess.run("tar -czf /content/segments.tgz -C /content/drive/MyDrive/cdy-hack-ag5/marieum-asr-ft/runs segments", shell=True, check=True); import os; print(os.path.getsize("/content/segments.tgz"))' | colab --auth=oauth2 exec -s seg
 mkdir -p work/segments
 colab --auth=oauth2 download -s seg /content/segments.tgz work/segments/segments.tgz
 colab --auth=oauth2 stop -s seg
@@ -225,8 +225,8 @@ echo 'import subprocess, os; os.environ.update(MAX_STEPS="1000", RUN_NAME="pilot
 
 ```bash
 colab --auth=oauth2 status -s train
-colab --auth=oauth2 download -s train /content/drive/MyDrive/marieum-asr-ft/runs/train/pilot_v1.log work/train_pilot_v1.log && tail -5 work/train_pilot_v1.log
-colab --auth=oauth2 ls -s train /content/drive/MyDrive/marieum-asr-ft/ckpt/pilot_v1/v1/checkpoints
+colab --auth=oauth2 download -s train /content/drive/MyDrive/cdy-hack-ag5/marieum-asr-ft/runs/train/pilot_v1.log work/train_pilot_v1.log && tail -5 work/train_pilot_v1.log
+colab --auth=oauth2 ls -s train /content/drive/MyDrive/cdy-hack-ag5/marieum-asr-ft/ckpt/pilot_v1/v1/checkpoints
 ```
 
 - 로그 끝에 step 숫자, `train_loss`, 검증 때 `val_wer`가 보인다. 메모리 부족(`CUDA out of memory`)이면 멈추고 보고한다
@@ -241,7 +241,7 @@ test_v2 묶음을 올리고(제로샷 3단계와 같다), 파인튜닝 모델로
 echo 'import os; os.makedirs("/content/upload", exist_ok=True); print("ok")' | colab --auth=oauth2 exec -s train
 for f in work/upload/test_v2.tar.part-*; do colab --auth=oauth2 upload -s train "$f" "/content/upload/$(basename "$f")" || break; done
 colab --auth=oauth2 upload -s train colab/zeroshot_nemotron.py /content/zeroshot_nemotron.py
-echo 'import subprocess, os, glob; m=sorted(glob.glob("/content/drive/MyDrive/marieum-asr-ft/ckpt/pilot_v1/v1/checkpoints/*.nemo"))[-1]; os.environ.update(MODEL=m, OUT_NAME="pilot_v1_320ms"); p=subprocess.run("python /content/zeroshot_nemotron.py", shell=True); print("exit", p.returncode, m)' | colab --auth=oauth2 exec -s train
+echo 'import subprocess, os, glob; m=sorted(glob.glob("/content/drive/MyDrive/cdy-hack-ag5/marieum-asr-ft/ckpt/pilot_v1/v1/checkpoints/*.nemo"))[-1]; os.environ.update(MODEL=m, OUT_NAME="pilot_v1_320ms"); p=subprocess.run("python /content/zeroshot_nemotron.py", shell=True); print("exit", p.returncode, m)' | colab --auth=oauth2 exec -s train
 mkdir -p work/eval/pilot_v1_320ms
 colab --auth=oauth2 download -s train /content/out/pilot_v1_320ms/hyps.jsonl work/eval/pilot_v1_320ms/hyps.jsonl
 colab --auth=oauth2 download -s train /content/out/pilot_v1_320ms/run_info.json work/eval/pilot_v1_320ms/run_info.json
@@ -340,7 +340,7 @@ echo 'import subprocess; p=subprocess.run("python /content/retranscribe_segments
 
 ```bash
 colab --auth=oauth2 status -s retx
-colab --auth=oauth2 ls -s retx /content/drive/MyDrive/marieum-asr-ft/runs/segments_pilot
+colab --auth=oauth2 ls -s retx /content/drive/MyDrive/cdy-hack-ag5/marieum-asr-ft/runs/segments_pilot
 ```
 
 `DONE`이 보이면 4단계. IDLE인데 `DONE`이 없으면 `run.log`를 내려받아 끝부분 오류를 보고한다.
@@ -348,7 +348,7 @@ colab --auth=oauth2 ls -s retx /content/drive/MyDrive/marieum-asr-ft/runs/segmen
 ## 4. 결과 받기와 반납
 
 ```bash
-echo 'import subprocess; subprocess.run("tar -czf /content/segments_pilot.tgz -C /content/drive/MyDrive/marieum-asr-ft/runs segments_pilot", shell=True, check=True); import os; print(os.path.getsize("/content/segments_pilot.tgz"))' | colab --auth=oauth2 exec -s retx
+echo 'import subprocess; subprocess.run("tar -czf /content/segments_pilot.tgz -C /content/drive/MyDrive/cdy-hack-ag5/marieum-asr-ft/runs segments_pilot", shell=True, check=True); import os; print(os.path.getsize("/content/segments_pilot.tgz"))' | colab --auth=oauth2 exec -s retx
 colab --auth=oauth2 download -s retx /content/segments_pilot.tgz work/segments/segments_pilot.tgz
 colab --auth=oauth2 stop -s retx
 colab --auth=oauth2 sessions
@@ -406,7 +406,7 @@ echo 'import subprocess; p=subprocess.run("python /content/run_stage0.py", shell
 
 ```bash
 colab --auth=oauth2 status -s stage0
-colab --auth=oauth2 ls -s stage0 /content/drive/MyDrive/marieum-asr-ft/runs/eval
+colab --auth=oauth2 ls -s stage0 /content/drive/MyDrive/cdy-hack-ag5/marieum-asr-ft/runs/eval
 ```
 
 `ft_v1_vad_320ms`, `yoonaj_vad`, `ft_v1_1120ms` 폴더가 끝나는 순서대로 생긴다. IDLE이 되면 4단계.
@@ -469,8 +469,8 @@ echo 'import subprocess; p=subprocess.run("python /content/run_ft_v2.py", shell=
 
 ```bash
 colab --auth=oauth2 status -s ftv2
-colab --auth=oauth2 download -s ftv2 /content/drive/MyDrive/marieum-asr-ft/runs/train/ft_v2.log work/train_ft_v2.log && tail -5 work/train_ft_v2.log
-colab --auth=oauth2 ls -s ftv2 /content/drive/MyDrive/marieum-asr-ft/runs/eval
+colab --auth=oauth2 download -s ftv2 /content/drive/MyDrive/cdy-hack-ag5/marieum-asr-ft/runs/train/ft_v2.log work/train_ft_v2.log && tail -5 work/train_ft_v2.log
+colab --auth=oauth2 ls -s ftv2 /content/drive/MyDrive/cdy-hack-ag5/marieum-asr-ft/runs/eval
 ```
 
 - 학습 중: 로그 끝의 step, val_wer. 학습이 끝나면 `runs/eval`에 `ft_v2_1120ms`, `ft_v2_320ms`가 차례로 생긴다
@@ -520,7 +520,7 @@ timeout 120 colab --auth=oauth2 upload -s ftv3 colab/train_nemotron.py /content/
 timeout 120 colab --auth=oauth2 upload -s ftv3 colab/zeroshot_nemotron.py /content/zeroshot_nemotron.py
 timeout 120 colab --auth=oauth2 upload -s ftv3 colab/run_ft_v3.py /content/run_ft_v3.py
 timeout 120 colab --auth=oauth2 ls -s ftv3 /content/upload
-timeout 120 colab --auth=oauth2 ls -s ftv3 /content/drive/MyDrive/marieum-asr-ft/data/manifests
+timeout 120 colab --auth=oauth2 ls -s ftv3 /content/drive/MyDrive/cdy-hack-ag5/marieum-asr-ft/data/manifests
 echo 'import subprocess; p=subprocess.run("python /content/run_ft_v3.py", shell=True, capture_output=True, text=True); print("exit", p.returncode); print(p.stdout[-3000:]); print(p.stderr[-3000:])' | colab --auth=oauth2 exec -s ftv3
 ```
 
@@ -534,9 +534,9 @@ echo 'import subprocess; p=subprocess.run("python /content/run_ft_v3.py", shell=
 
 ```bash
 colab --auth=oauth2 status -s ftv3
-colab --auth=oauth2 download -s ftv3 /content/drive/MyDrive/marieum-asr-ft/runs/train/ft_v3.log work/train_ft_v3.log && tail -5 work/train_ft_v3.log
-colab --auth=oauth2 ls -s ftv3 /content/drive/MyDrive/marieum-asr-ft/ckpt/ft_v3/v1/checkpoints
-colab --auth=oauth2 ls -s ftv3 /content/drive/MyDrive/marieum-asr-ft/runs/eval
+colab --auth=oauth2 download -s ftv3 /content/drive/MyDrive/cdy-hack-ag5/marieum-asr-ft/runs/train/ft_v3.log work/train_ft_v3.log && tail -5 work/train_ft_v3.log
+colab --auth=oauth2 ls -s ftv3 /content/drive/MyDrive/cdy-hack-ag5/marieum-asr-ft/ckpt/ft_v3/v1/checkpoints
+colab --auth=oauth2 ls -s ftv3 /content/drive/MyDrive/cdy-hack-ag5/marieum-asr-ft/runs/eval
 ```
 
 - val_wer는 체크포인트 파일 이름(`ft_v3--val_wer=0.xxxx-epoch=N.ckpt`)에서 본다. 학습이 끝나면 `runs/eval`에 `ft_v3_320ms`, `ft_v3_1120ms`가 차례로 생긴다
@@ -545,7 +545,7 @@ colab --auth=oauth2 ls -s ftv3 /content/drive/MyDrive/marieum-asr-ft/runs/eval
 
 ```bash
 for d in ft_v3_320ms ft_v3_1120ms; do mkdir -p work/eval/$d; for f in hyps.jsonl run_info.json; do colab --auth=oauth2 download -s ftv3 /content/out/$d/$f work/eval/$d/$f; done; done
-colab --auth=oauth2 ls -s ftv3 /content/drive/MyDrive/marieum-asr-ft/ckpt/ft_v3/v1/checkpoints
+colab --auth=oauth2 ls -s ftv3 /content/drive/MyDrive/cdy-hack-ag5/marieum-asr-ft/ckpt/ft_v3/v1/checkpoints
 colab --auth=oauth2 stop -s ftv3
 colab --auth=oauth2 sessions
 colab --auth=oauth2 usage
@@ -586,7 +586,7 @@ for f in work/upload/test_v2.tar.part-*; do timeout 900 colab --auth=oauth2 uplo
 for s in train_nemotron.py zeroshot_nemotron.py run_ft_v3.py job.py; do timeout 120 colab --auth=oauth2 upload -s ftv3 colab/$s /content/$s; done
 timeout 120 colab --auth=oauth2 ls -s ftv3 /content/upload
 timeout 120 colab --auth=oauth2 ls -s ftv3 /content
-timeout 120 colab --auth=oauth2 ls -s ftv3 /content/drive/MyDrive/marieum-asr-ft/ckpt/ft_v3/v1/checkpoints
+timeout 120 colab --auth=oauth2 ls -s ftv3 /content/drive/MyDrive/cdy-hack-ag5/marieum-asr-ft/ckpt/ft_v3/v1/checkpoints
 ```
 
 - 실패하면 `status`로 세션을 보고 같은 명령을 한 번 더. 두 번째도 실패하면 멈추고 보고
@@ -606,9 +606,9 @@ echo 'import subprocess; p=subprocess.run("python /content/job.py wait", shell=T
 
 ```bash
 colab --auth=oauth2 status -s ftv3
-colab --auth=oauth2 download -s ftv3 /content/drive/MyDrive/marieum-asr-ft/runs/train/ft_v3.log work/train_ft_v3.log && grep -a -o "Epoch [0-9]*, global step [0-9]*: 'val_wer' [a-z ]*[0-9.]*" work/train_ft_v3.log | tail -3
-colab --auth=oauth2 ls -s ftv3 /content/drive/MyDrive/marieum-asr-ft/ckpt/ft_v3/v1/checkpoints
-colab --auth=oauth2 ls -s ftv3 /content/drive/MyDrive/marieum-asr-ft/runs/eval
+colab --auth=oauth2 download -s ftv3 /content/drive/MyDrive/cdy-hack-ag5/marieum-asr-ft/runs/train/ft_v3.log work/train_ft_v3.log && grep -a -o "Epoch [0-9]*, global step [0-9]*: 'val_wer' [a-z ]*[0-9.]*" work/train_ft_v3.log | tail -3
+colab --auth=oauth2 ls -s ftv3 /content/drive/MyDrive/cdy-hack-ag5/marieum-asr-ft/ckpt/ft_v3/v1/checkpoints
+colab --auth=oauth2 ls -s ftv3 /content/drive/MyDrive/cdy-hack-ag5/marieum-asr-ft/runs/eval
 colab --auth=oauth2 usage
 ```
 
@@ -622,7 +622,7 @@ colab --auth=oauth2 usage
 
 ```bash
 for d in ft_v3_320ms ft_v3_1120ms; do mkdir -p work/eval/$d; for f in hyps.jsonl run_info.json; do colab --auth=oauth2 download -s ftv3 /content/out/$d/$f work/eval/$d/$f; done; done
-colab --auth=oauth2 ls -s ftv3 /content/drive/MyDrive/marieum-asr-ft/ckpt/ft_v3/v1/checkpoints
+colab --auth=oauth2 ls -s ftv3 /content/drive/MyDrive/cdy-hack-ag5/marieum-asr-ft/ckpt/ft_v3/v1/checkpoints
 colab --auth=oauth2 stop -s ftv3
 colab --auth=oauth2 sessions
 colab --auth=oauth2 usage
@@ -656,7 +656,7 @@ for f in work/upload/test_v2.tar.part-*; do timeout 900 colab --auth=oauth2 uplo
 for s in streaming_metrics.py marieum_stream.py zeroshot_nemotron.py run_rt.py job.py; do timeout 120 colab --auth=oauth2 upload -s rt colab/$s /content/$s; done
 timeout 120 colab --auth=oauth2 ls -s rt /content/upload
 timeout 120 colab --auth=oauth2 ls -s rt /content
-timeout 120 colab --auth=oauth2 ls -s rt /content/drive/MyDrive/marieum-asr-ft/ckpt/ft_v3/v1/checkpoints
+timeout 120 colab --auth=oauth2 ls -s rt /content/drive/MyDrive/cdy-hack-ag5/marieum-asr-ft/ckpt/ft_v3/v1/checkpoints
 ```
 
 - 실패하면 `status`로 세션을 보고 같은 명령을 한 번 더. 두 번째도 실패하면 멈추고 보고
@@ -675,7 +675,7 @@ echo 'import subprocess; p=subprocess.run("python /content/job.py wait", shell=T
 
 ```bash
 colab --auth=oauth2 status -s rt
-colab --auth=oauth2 ls -s rt /content/drive/MyDrive/marieum-asr-ft/runs/eval
+colab --auth=oauth2 ls -s rt /content/drive/MyDrive/cdy-hack-ag5/marieum-asr-ft/runs/eval
 colab --auth=oauth2 usage
 ```
 
@@ -722,7 +722,7 @@ for f in work/upload/test_v2.tar.part-*; do timeout 900 colab --auth=oauth2 uplo
 for s in pipeline_eval.py streaming_metrics.py marieum_stream.py zeroshot_nemotron.py job.py; do timeout 120 colab --auth=oauth2 upload -s pipe colab/$s /content/$s; done
 timeout 120 colab --auth=oauth2 ls -s pipe /content/upload
 timeout 120 colab --auth=oauth2 ls -s pipe /content
-timeout 120 colab --auth=oauth2 ls -s pipe /content/drive/MyDrive/marieum-asr-ft/ckpt/ft_v3/v1/checkpoints
+timeout 120 colab --auth=oauth2 ls -s pipe /content/drive/MyDrive/cdy-hack-ag5/marieum-asr-ft/ckpt/ft_v3/v1/checkpoints
 ```
 
 - 실패하면 `status`로 세션을 보고 같은 명령을 한 번 더. 두 번째도 실패하면 멈추고 보고
@@ -741,7 +741,7 @@ echo 'import subprocess; p=subprocess.run("python /content/job.py wait", shell=T
 
 ```bash
 colab --auth=oauth2 status -s pipe
-colab --auth=oauth2 ls -s pipe /content/drive/MyDrive/marieum-asr-ft/runs/eval
+colab --auth=oauth2 ls -s pipe /content/drive/MyDrive/cdy-hack-ag5/marieum-asr-ft/runs/eval
 colab --auth=oauth2 usage
 ```
 

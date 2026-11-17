@@ -25,7 +25,7 @@ import sys
 import time
 from pathlib import Path
 
-DRIVE = Path("/content/drive/MyDrive/marieum-asr-ft")
+DRIVE = Path("/content/drive/MyDrive/cdy-hack-ag5/marieum-asr-ft")
 AUDIO = Path("/content/train_audio")
 CLIPS = Path("/content/seg_clips")
 NEMO = Path("/content/NeMo")
