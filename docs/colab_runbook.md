@@ -727,6 +727,8 @@ timeout 120 colab --auth=oauth2 ls -s pipe /content/drive/MyDrive/cdy-hack-ag5/m
 
 - 실패하면 `status`로 세션을 보고 같은 명령을 한 번 더. 두 번째도 실패하면 멈추고 보고
 - 확인할 것: `test_v2.tar.part-00`~`03`, 스크립트 5개, Drive에 `ft_v3.nemo`
+- **`status`가 `BUSY (automation(drivemount))`이면 아직 Drive 연결 중이다.** 사용자가 브라우저 동의를 마칠 때까지 기다린다. 11-17 두 번째 시도는 동의가 끝나지 않아 `/content/drive`가 없었다
+- NeMo는 `eaf0098dde`에 고정해서 설치한다 (`NEMO_REF`, 핸드오프와 같은 버전)
 
 ### 3. 시작 (한 번) 과 기다리기
 
