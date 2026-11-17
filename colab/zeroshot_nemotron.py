@@ -71,7 +71,7 @@ def install():
         sh(["apt-get", "-qq", "install", "-y", "libsndfile1", "ffmpeg"])
     if not NEMO.exists():
         sh(["git", "clone", "--depth", "1", "https://github.com/NVIDIA/NeMo.git", str(NEMO)])
-        ref = os.environ.get("NEMO_REF")  # 정해진 커밋에 고정할 때 (예: eaf0098dde). 없으면 main 최신
+        ref = os.environ.get("NEMO_REF")  # 정해진 커밋에 고정할 때. 40자 전체 해시를 쓴다 (짧은 해시는 fetch가 못 찾는다). 없으면 main 최신
         if ref:
             sh(["git", "-C", str(NEMO), "fetch", "--depth", "1", "origin", ref])
             sh(["git", "-C", str(NEMO), "checkout", "-q", "FETCH_HEAD"])

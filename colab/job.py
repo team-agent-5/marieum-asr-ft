@@ -27,12 +27,18 @@ def main():
         if os.path.exists(PID):
             print("이미 시작됨, pid", open(PID).read())
             return
+        if not os.path.exists(f"/content/{sys.argv[2]}"):
+            print(f"/content/{sys.argv[2]}가 없다. 올리기가 끝난 뒤 다시 보낸다")
+            return
         p = subprocess.Popen(f"python /content/{sys.argv[2]} > {OUT} 2>&1; echo $? > {EXIT}", shell=True,
                              start_new_session=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                              stderr=subprocess.DEVNULL)
         open(PID, "w").write(str(p.pid))
         print("시작, pid", p.pid)
     elif cmd == "wait":
+        if not os.path.exists(PID):  # start보다 먼저 오면 커널을 붙잡지 않고 바로 끝낸다 (11-17)
+            print("시작 안 함. start를 먼저 보낸다")
+            return
         while not os.path.exists(EXIT):
             time.sleep(30)
         print("exit", open(EXIT).read().strip())
