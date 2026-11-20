@@ -505,17 +505,26 @@ async def asr_file(srv, request, sample_rate, trace_id):
         log("asr_failed", trace, endpoint="/asr", status="error", message=repr(e))
         return asr_error(500, "INTERNAL", "전사 중 서버 오류가 발생했습니다.", trace)
 
-    segs, prev_ms = [], 0
+    segs, confs, prev_ms = [], [], 0
     for req, out in outs:
-        text = out.final_text.strip()
-        if not text:
+        if not out.final_text.strip():
             continue
         g = out.final_segments
         start_ms = round(min(a for a, _, _ in g) * 1000) if g else prev_ms
         end_ms = round(max(b for _, b, _ in g) * 1000) if g else req.audio_end_ms
-        conf = round(sum(c for _, _, c in g) / len(g), 4) if g else 0.0
-        segs.append({"text": text[:MAX_TEXT], "confidence": conf, "start_ms": start_ms, "end_ms": end_ms})
+        if segs and not out.final_text[0].isspace():
+            # 앞 확정의 단어가 이어진다 (' 안' + '녕하세요'). 공백 없이 앞 구간에 붙인다
+            s = segs[-1]
+            s["text"] = (s["text"] + out.final_text.rstrip())[:MAX_TEXT]
+            s["end_ms"] = max(s["end_ms"], end_ms)
+            confs[-1] += [c for _, _, c in g]
+        else:
+            segs.append({"text": out.final_text.strip()[:MAX_TEXT], "confidence": 0.0, "start_ms": start_ms,
+                         "end_ms": end_ms})
+            confs.append([c for _, _, c in g])
         prev_ms = req.audio_end_ms
+    for s, cs in zip(segs, confs):
+        s["confidence"] = round(sum(cs) / len(cs), 4) if cs else 0.0
     total = sum(max(1, s["end_ms"] - s["start_ms"]) for s in segs)
     conf = round(sum(s["confidence"] * max(1, s["end_ms"] - s["start_ms"]) for s in segs) / total, 4) if segs else 0.0
     body = {"trace_id": trace, "text": " ".join(s["text"] for s in segs)[:MAX_TEXT], "confidence": conf,

@@ -160,6 +160,28 @@ def test_revised_replaces_text():
     assert f["text"].startswith("X")
 
 
+def test_word_split_across_finals_has_no_space():
+    """파이프라인이 한 단어를 두 번에 나눠 확정해도(' 안' + '녕하세요') 글자 사이에 공백을 넣지 않는다."""
+    d = Driver(engine=FakeEngine(split_at=2))
+    d.feed(np.concatenate([speech(1.5), silence(2.5)]))
+    d.end()
+    check_protocol(d.msgs)
+    check_text(d.msgs)
+    f = next(m for m in d.msgs if m["type"] == "segment_final")
+    assert f["text"] and " " not in f["text"]  # 소리 한 덩어리 = 가짜 엔진에서 한 단어
+    assert all(" " not in m["text"] for m in d.msgs if m["type"] == "transcript_delta")
+
+
+def test_words_keep_their_spaces():
+    """새 단어로 시작하는 확정 사이에는 공백이 남는다 (쉼이 1.75초보다 짧아 같은 구간)."""
+    d = Driver()
+    d.feed(np.concatenate([speech(1.0), silence(1.2), speech(1.0), silence(2.5)]))
+    d.end()
+    check_protocol(d.msgs)
+    f = next(m for m in d.msgs if m["type"] == "segment_final")
+    assert f["text"].count(" ") == 1 and not f["text"].startswith(" ")
+
+
 def test_long_speech_is_cut_at_max_length():
     d = Driver()
     d.feed(np.concatenate([speech(16.0), silence(2.5)]))

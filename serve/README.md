@@ -46,16 +46,26 @@ v1 `/asr-stream`(Whisper)은 이 서버에 없다. 백엔드가 v1 모양을 그
 
 ## 실행 (GPU 서버)
 
-```bash
-python3.11 -m venv .venv-nemo && . .venv-nemo/bin/activate
-pip install torch==2.11.0+cu128 torchaudio==2.11.0+cu128 --extra-index-url https://download.pytorch.org/whl/cu128
-git clone https://github.com/NVIDIA/NeMo && git -C NeMo checkout eaf0098ddeffb804ef1b1fb3a955b3bf022f4171
-pip install -e "NeMo[asr]" && pip install -r serve/requirements.txt && pip check
+11-20 GPU 서버(L4, Ubuntu 24.04, sudo 없음)에 이 순서로 설치해서 띄웠다.
 
-ML_NEMO_MODEL=/models/ft_v3.nemo ML_NEMO_REPO=$PWD/NeMo \
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh   # ~/.local/bin/uv
+uv python install 3.12 && uv venv --managed-python --python 3.12 .venv-nemo && . .venv-nemo/bin/activate
+printf 'torch==2.11.0+cu128\ntorchaudio==2.11.0+cu128\n' > /tmp/torch-constraints.txt
+IDX="--extra-index-url https://download.pytorch.org/whl/cu128 --index-strategy unsafe-best-match"
+uv pip install $IDX torch==2.11.0+cu128 torchaudio==2.11.0+cu128
+git clone https://github.com/NVIDIA/NeMo ~/NeMo && git -C ~/NeMo checkout eaf0098ddeffb804ef1b1fb3a955b3bf022f4171
+uv pip install $IDX -c /tmp/torch-constraints.txt -e ~/NeMo[asr]
+uv pip install $IDX -c /tmp/torch-constraints.txt -r serve/requirements.txt && uv pip check
+
+ML_NEMO_MODEL=~/models/ft_v3.nemo ML_NEMO_REPO=~/NeMo \
   uvicorn serve.app:app --host 0.0.0.0 --port 8001 --workers 1
 ```
 
+- **Python 3.12 이상:** NeMo `eaf0098`이 요구한다. 3.11로는 설치되지 않는다
+- **Python 헤더가 있는 Python:** 모델을 불러올 때 Triton이 C 파일을 `gcc`로 컴파일하면서 `Python.h`를 찾는다. 시스템 `python3.12`에 `python3.12-dev`가 없으면 `model_load_failed`(`fatal error: Python.h`)로 멈춘다. sudo가 없으면 uv 관리 Python(`--managed-python`)을 쓴다
+- **torch 고정:** NeMo 의존성이 torch를 바꾸지 못하게 constraints로 묶는다
+- 실측 (11-20, L4): 모델 로딩 30.7초, 워밍업 24.3초, `chunk_ms` 320
 - `ft_v3.nemo`는 Drive `cdy-hack-ag5/marieum-asr-ft/ckpt/ft_v3/v1/checkpoints/`에 있다 (2,553,098,240 바이트). 서버에 올린 뒤 `sha256sum`을 남긴다. 모델 파일과 Drive 링크는 레포에 넣지 않는다
 - 환경변수는 handoff 3.5 표와 `config.py`. VAD 값(`ML_END_SILENCE_MS` 등)은 v1과 같다
 - 반드시 `--workers 1`
@@ -67,18 +77,18 @@ pip install -r serve/requirements.txt
 pytest
 ```
 
-`tests/fakes.py`의 가짜 엔진이 NeMo 파이프라인 규칙(stream별 상태, `is_first`/`is_last`, 한 step에 같은 stream 하나, 상태 칸 수)을 어기면 바로 실패한다. 테스트 23개 (11-20 통과).
+`tests/fakes.py`의 가짜 엔진이 NeMo 파이프라인 규칙(stream별 상태, `is_first`/`is_last`, 한 step에 같은 stream 하나, 상태 칸 수, 글자 안의 띄어쓰기)을 어기면 바로 실패한다. 테스트 26개 (11-20 통과).
 
 발화마다 남는 로그 (handoff 9.6, 글자는 찍지 않는다): `segment_final` 이벤트에 `speech_ms`, `first_delta_ms`(말 시작 오디오 도착 → 첫 delta, delta가 없었으면 null), `final_ms`(말 끝 오디오 도착 → final, `latency_ms`와 같은 값), `chars`, `deltas`, `revised`, `reason`, `confidence`.
 
 ## GPU에서 아직 확인하지 않은 것
 
-가짜 엔진으로는 서버 규칙만 확인했다. 실제 모델로 처음 띄울 때 이것부터 본다.
+11-20 GPU 서버에 띄워 1번은 확인했고, 4번은 값이 나오는 것까지 봤다. 맥 TTS 한국어 문장 하나(2.8초)로 `POST /asr`와 `/asr-stream/v2`가 끝까지 돈다.
 
-1. `NemotronEngine`이 뜨는가: `PipelineBuilder.build_pipeline`, `chunk_ms`가 320으로 나오는가 (`/healthz` 로그의 `model_loaded`)
+1. ~~`NemotronEngine`이 뜨는가~~ **확인 (11-20):** `model_loaded`, `chunk_ms` 320, `/healthz` 200
 2. 마지막 조각을 0으로 채우고 `length`에 실제 길이를 넣는 방식이 파이프라인에서 문제없는가. 남은 오디오가 없으면 무음 한 조각(0.32초)을 `is_last`로 보낸다
 3. `final_segments`의 `start`/`end`: NeMo 코드로는 초 단위다 (`bpe_decoder.py`에서 토큰 위치 × 토큰 길이(초)). 실제 값이 stream 시작 기준인지 본다. `POST /asr`의 `start_ms`/`end_ms`에만 쓴다
-4. `confidence`가 0이 아닌 값으로 나오는가. NeMo 기본은 `preserve_frame_confidence: false`(이때 모두 0.0)이고 `engine.py`가 `true`로 켠다. 방식은 entropy(tsallis, alpha 0.5)의 평균이다. 지금까지 실험(EXP-015 ~ 017)은 신뢰도를 끄고 돌렸으므로 값의 분포를 처음 본다. 백엔드가 confidence 기준값을 쓰면 test_v2 녹음으로 분포를 보고 정한다. 켠 상태의 step 시간도 다시 잰다
+4. `confidence`가 0이 아닌 값으로 나오는가. **11-20:** 나온다 (TTS 문장 하나에서 파일 0.70, 실시간 0.55). 분포는 아직 모른다. NeMo 기본은 `preserve_frame_confidence: false`(이때 모두 0.0)이고 `engine.py`가 `true`로 켠다. 방식은 entropy(tsallis, alpha 0.5)의 평균이다. 지금까지 실험(EXP-015 ~ 017)은 신뢰도를 끄고 돌렸으므로 값의 분포를 처음 본다. 백엔드가 confidence 기준값을 쓰면 test_v2 녹음으로 분포를 보고 정한다. 켠 상태의 step 시간도 다시 잰다
 5. 같은 녹음을 `conversation`과 `utterance`로 넣어 이어 붙인 글자가 같은가 (코드상 같아야 한다)
 6. test_v2 녹음 몇 개를 v2로 실제 속도로 흘려 CER이 EXP-015(27.86)와 같은 수준인가, 지연 목표(말 끝 → 마지막 delta p95 ≤ 800ms, 4세션 `OVERLOADED` 0, step p95 ≤ 160ms)를 지키는가 (handoff 6절 4단계)
 

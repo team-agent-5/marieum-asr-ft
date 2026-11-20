@@ -47,7 +47,10 @@ class Fin:
 
 
 def _join(parts):
-    return " ".join(p.strip() for p in parts if p and p.strip())
+    """파이프라인 글자를 그대로 잇는다. 띄어쓰기는 글자 안에 이미 있다: 새 단어로 시작하는 final·partial만
+    앞에 공백이 붙고, 단어 중간에서 확정되면 다음 글자는 공백 없이 온다 (' 안' + '녕하세요').
+    조각마다 공백을 지우고 다시 넣으면 단어 중간에 공백이 생긴다. 양 끝만 지운다."""
+    return "".join(p for p in parts if p).strip()
 
 
 def file_reqs(stream_id, x, n):

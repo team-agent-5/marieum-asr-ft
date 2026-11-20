@@ -1,4 +1,4 @@
-# serve/ (Nemotron ft_v3 서버). 웹 쪽 버전은 marieum-ai requirements.txt와 같다. Python 3.11
+# serve/ (Nemotron ft_v3 서버). 웹 쪽 버전은 marieum-ai requirements.txt와 같다. Python 3.12 이상 (NeMo eaf0098이 요구한다)
 # torch/torchaudio는 GPU 서버의 CUDA 빌드를 쓴다 (marieum-ai: 2.11.0+cu128).
 # NeMo는 pip 패키지가 아니라 시험한 커밋을 클론해서 설치한다 (serve/README.md):
 #   git clone https://github.com/NVIDIA/NeMo && git -C NeMo checkout eaf0098ddeffb804ef1b1fb3a955b3bf022f4171

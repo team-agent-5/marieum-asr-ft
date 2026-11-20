@@ -6,6 +6,9 @@ FakeEngine은 NeMo 파이프라인 규칙을 흉내 낸다:
   - 상태 칸(num_slots)이 모자라면 오류 (NeMo context_manager: "No free slots available")
   - 소리가 있는 조각마다 partial에 글자 하나를 붙인다
   - 소리 뒤 무음 조각이 eou_chunks개 이어지면(0.32초 × 3 = 960ms ≥ 800ms) partial을 확정한다
+  - 띄어쓰기는 NeMo처럼 글자 안에 들어 있다: 새 단어로 시작하는 partial·final만 앞에 공백이 붙는다
+    (partial은 ids_to_text_without_stripping, final은 concat_with_space일 때만 separator).
+    split_at번째 소리 조각에서는 단어 중간에 확정한다 (실제 ft_v3: ' 안' 확정 뒤 '녕하세요…')
 """
 
 import time
@@ -19,9 +22,10 @@ SYL = "가나다라마바사아자차카타파하"
 
 
 class FakeEngine:
-    def __init__(self, eou_chunks=3, delay_s=0.0, revise_at=None, slots=32):
+    def __init__(self, eou_chunks=3, delay_s=0.0, revise_at=None, slots=32, split_at=None):
         self.chunk_samples = CHUNK
         self.eou_chunks, self.delay_s, self.revise_at, self.slots = eou_chunks, delay_s, revise_at, slots
+        self.split_at = split_at
         self.states = {}
         self.max_states = 0  # 한꺼번에 살아 있던 stream 수의 최대
         self.steps = []  # 각 step의 stream_id 목록
@@ -41,24 +45,30 @@ class FakeEngine:
                 assert r.stream_id not in self.states, "is_first가 두 번 왔다"
                 if len(self.states) >= self.slots:
                     raise RuntimeError("No free slots available")
-                self.states[r.stream_id] = {"partial": "", "sil": 0, "n": 0}
+                self.states[r.stream_id] = {"partial": "", "sil": 0, "n": 0, "cont": False}
                 self.max_states = max(self.max_states, len(self.states))
             st = self.states.get(r.stream_id)
             assert st is not None, f"is_first 없이 조각이 왔다: {r.stream_id}"
             loud = float(np.abs(r.samples[: r.length]).mean()) > 0.01 if r.length else False
             final = ""
             if loud:
+                if not st["partial"] and not st["cont"]:
+                    st["partial"] = " "  # 새 단어
+                st["cont"] = False
                 st["partial"] += SYL[st["n"] % len(SYL)]
                 st["n"] += 1
                 st["sil"] = 0
                 if self.revise_at is not None and st["n"] == self.revise_at:
-                    st["partial"] = "X" + st["partial"][1:]  # 앞에서 보낸 글자를 바꾼다
+                    p = st["partial"]  # 앞에서 보낸 글자를 바꾼다
+                    st["partial"] = p[:1] + "X" + p[2:] if p.startswith(" ") else "X" + p[1:]
+                if self.split_at is not None and st["n"] == self.split_at:
+                    final, st["partial"], st["cont"] = st["partial"], "", True  # 단어 중간에서 확정
             elif st["partial"]:
                 st["sil"] += 1
                 if st["sil"] >= self.eou_chunks:
-                    final, st["partial"] = " " + st["partial"], ""
+                    final, st["partial"] = st["partial"], ""
             if r.is_last and st["partial"]:
-                final, st["partial"] = final + " " + st["partial"], ""
+                final, st["partial"] = final + st["partial"], ""
             segs = [(0.0, r.audio_end_ms / 1000, 0.9)] if final else []
             outs.append(StepOut(r.stream_id, final, segs, st["partial"]))
             if r.is_last:

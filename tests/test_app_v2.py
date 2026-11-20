@@ -249,6 +249,19 @@ def test_post_asr_wav(client):
     assert body["model_version"] == S.model_version
 
 
+def test_post_asr_word_split_has_no_space():
+    """파일에서도 단어 중간 확정(' 안' + '녕하세요')을 공백 없이 한 구간으로 잇는다."""
+    eng = FakeEngine(split_at=2)
+    c = make_client(eng)
+    try:
+        r = c.post("/asr?sample_rate=16000&trace_id=sp", content=pcm16(np.concatenate([speech(1.5), silence(1.5)])))
+        body = r.json()
+        assert r.status_code == 200 and body["text"] and " " not in body["text"]
+        assert len(body["segments"]) == 1 and body["segments"][0]["text"] == body["text"]
+    finally:
+        c.__exit__(None, None, None)
+
+
 def test_post_asr_concurrency_limit(monkeypatch):
     """파일 요청이 몰려도 동시에 파이프라인에 들어가는 파일은 한도까지만. 나머지는 기다렸다가 처리된다."""
     monkeypatch.setattr(S, "asr_max_concurrent", 2)
