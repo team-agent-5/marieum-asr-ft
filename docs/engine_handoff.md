@@ -151,6 +151,7 @@ test_v2 녹음 30개 전체에 모델의 발화 끝 판정(`stop_history_eou`)�
 | `ML_NEMO_STEP_WAIT_MS` | 10 | 첫 Frame이 생긴 뒤 다른 세션 Frame을 기다리는 최대 시간 |
 | `ML_NEMO_MAX_BACKLOG_MS` | 5000 | 세션당 처리 못 한 오디오 한도 |
 | `ML_NEMO_MAX_SESSIONS` | 16 | 동시 세션 한도 (`num_slots`보다 작게) |
+| `ML_ASR_MAX_CONCURRENT` | 4 | `POST /asr` 동시 처리 한도. 넘는 요청은 기다린다. 파일도 상태 칸을 쓰므로 `num_slots` ≥ 세션 한도 + 이 값 + `batch_max` (11-20 추가) |
 
 VAD·길이 설정(`ML_VAD_THRESHOLD`, `ML_END_SILENCE_MS`, `ML_UTTERANCE_MAX_S`, `ML_SESSION_MAX_S` 등)은 v1과 같은 값을 같이 쓴다.
 
@@ -391,6 +392,8 @@ NVIDIA Speech NIM Realtime API와 비교하면 `transcript_delta` ≈ `conversat
 - 형식은 v1과 같다 (JSON 한 줄, `trace_id`, `latency_ms`)
 
 ### 9.7 만드는 순서
+
+> 11-20: 1 ~ 3단계를 이 레포 [`serve/`](../serve/README.md)에 만들었다. 가짜 파이프라인 테스트(`pytest`, 23개)는 통과했고, 실제 모델로는 아직 띄우지 않았다 (`serve/README.md` 마지막 절). 이 문서와 다르게 만든 곳(3.4 확정 글자 붙이기, `POST /asr` 동시 한도)은 `serve/README.md` "handoff와 다르게 한 곳"에 있다.
 
 1. **엔진 코어** (`server/engine_nemotron.py`): 3.2 설정으로 파이프라인 만들기, 워밍업, Frame 만들기, GPU 작업자 (3.3). 6절 1단계를 여기서 통과시킨다
 2. **`/asr-stream/v2`**: 세션 ↔ `stream_id`, 결과 → 메시지 (9.4), 한도. 가짜 파이프라인으로 6절 3단계 테스트

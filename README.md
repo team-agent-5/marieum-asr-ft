@@ -4,7 +4,7 @@
 
 - 지금 서비스 모델: Whisper-small `yoona-J/ASR_Whisper_Disease_General` (말이 끝나고 쉼 1.75초 뒤에 문장 확정)
 - 바꿀 모델: NVIDIA Nemotron 3.5 ASR Streaming 0.6B (cache-aware FastConformer-RNNT, 0.32초마다 글자를 덧붙인다)를 AI Hub 구음장애 음성(608)으로 파인튜닝한 **ft_v3**
-- 서비스 연결: [`docs/engine_handoff.md`](docs/engine_handoff.md)
+- 서비스 연결: [`docs/engine_handoff.md`](docs/engine_handoff.md). 그 스펙대로 만든 서버: [`serve/`](serve/README.md)
 - 전체 과정 설명 (공유용 페이지): https://claude.ai/artifact/SjWUALX9iqvzHV4aSDx7Tp
 
 ```
@@ -69,6 +69,8 @@
 | `eval/` | `score.py` 화자별·묶음별 CER, `unseen_text.py` 처음 보는 글자만 CER, `audit_colab_run.py` 외부 에이전트가 VM을 돌린 뒤 검사 |
 | `splits/` | 화자 분할 (`train_v1`, `val_v1`, `test_v2`), 307명 난이도 점수 |
 | `experiments/` | `results.csv` 실험 하나에 한 줄 (EXP-000 ~ 014) |
+| `serve/` | Nemotron ft_v3 서버. `/asr-stream/v2`, `POST /asr`, `/healthz` (NeMo 스트리밍 파이프라인 위). 실행과 남은 확인은 [`serve/README.md`](serve/README.md) |
+| `tests/` | `serve/` 테스트. GPU 없이 가짜 엔진으로 돈다 (`pytest`) |
 | `docs/` | `plan.md` 일정과 기록, `colab_runbook.md` VM 실행 순서, `engine_handoff.md` 서비스 연결, 조사 기록 |
 | `work/` | 중간 산출물 (git 밖) |
 
