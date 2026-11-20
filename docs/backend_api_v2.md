@@ -163,27 +163,29 @@ fatal 오류로 세션이 끝나도 연결은 열려 있다 (`MODEL_UNAVAILABLE`
 
 ## 예시 세션과 클라이언트 코드
 
-실제 서버에 "안녕하세요. 오늘 배가 조금 아파요."(2.8초) + 쉼 3초를 100ms씩 실제 속도로 보낸 흐름이다. 글자와 순서는 실측이다. 왼쪽 시간(연결부터)과 ms 필드 값은 대략값이다.
+실제 서버(`a073d63`, VAD 쉼 0.8초)에 "안녕하세요. 오늘 배가 조금 아파요."(2.8초) + 쉼 3초를 100ms씩 실제 속도로 보낸 실측이다. 왼쪽 시간은 연결부터.
 
 ```
 → {"type":"start","trace_id":"t1","sample_rate":16000,"mode":"conversation"}
-   0ms ← {"type":"ready","seq":1,"engine":"nemotron","model_version":"marieum-nemotron-ft_v3","chunk_ms":320,"sample_rate":16000}
+   2ms ← {"type":"ready","seq":1,"engine":"nemotron","model_version":"marieum-nemotron-ft_v3","chunk_ms":320,"sample_rate":16000}
 → (오디오 100ms씩)
- 200ms ← {"type":"segment_start","seq":2,"segment_id":0,"start_ms":0}
- 660ms ← {"type":"transcript_delta","seq":3,"segment_id":0,"append":"안","text":"안","revised":false,...}
- 960ms ← {"type":"transcript_delta","seq":4,"append":"녕하","text":"안녕하",...}
-1260ms ← {"type":"transcript_delta","seq":5,"append":"세요","text":"안녕하세요",...}
-1570ms ← {"type":"transcript_delta","seq":6,"append":". 오늘","text":"안녕하세요. 오늘",...}
-   ...  (seq 7~10: " 배", "가 조금", " 아", "파요")
-2880ms ← {"type":"transcript_delta","seq":10,"append":"파요","text":"안녕하세요. 오늘 배가 조금 아파요",...}
-   ...  (말이 끝나고 1.75초 쉬면)
-4780ms ← {"type":"segment_final","seq":11,"segment_id":0,"text":"안녕하세요. 오늘 배가 조금 아파요",
-          "start_ms":0,"end_ms":2752,"reason":"silence","confidence":0.704,"no_speech_prob":0.0,"is_last":false}
+ 124ms ← {"type":"segment_start","seq":2,"segment_id":0,"start_ms":0}
+ 662ms ← {"type":"transcript_delta","seq":3,"segment_id":0,"append":"안녕","text":"안녕","revised":false,"audio_end_ms":640}
+ 963ms ← {"type":"transcript_delta","seq":4,"append":"하세요","text":"안녕하세요",...}
+1259ms ← {"type":"transcript_delta","seq":5,"append":".","text":"안녕하세요.",...}
+1561ms ← {"type":"transcript_delta","seq":6,"append":" 오늘","text":"안녕하세요. 오늘",...}
+   ...  (seq 7~9: " 배가", " 조금", " 아파")
+2870ms ← {"type":"transcript_delta","seq":10,"append":"요","text":"안녕하세요. 오늘 배가 조금 아파요",...}
+   ...  (말 끝 2624ms, 0.8초 쉬면)
+3571ms ← {"type":"segment_final","seq":11,"segment_id":0,"text":"안녕하세요. 오늘 배가 조금 아파요",
+          "start_ms":0,"end_ms":2624,"reason":"silence","confidence":0.704,"no_speech_prob":0.0,"is_last":false}
 → {"type":"end","trace_id":"t1"}
-6080ms ← {"type":"segment_start","seq":12,"segment_id":1,"start_ms":5888}
-6080ms ← {"type":"segment_final","seq":13,"segment_id":1,"text":"","reason":"end","confidence":0.0,"no_speech_prob":1.0,"is_last":true}
-6080ms ← {"type":"session_end","seq":14,"segments":2,"audio_ms":5910}
+5830ms ← {"type":"segment_start","seq":12,"segment_id":1,"start_ms":5760}
+5877ms ← {"type":"segment_final","seq":13,"segment_id":1,"text":"","reason":"end","confidence":0.0,"no_speech_prob":1.0,"is_last":true}
+5878ms ← {"type":"session_end","seq":14,"segments":2,"audio_ms":5783}
 ```
+
+말이 끝나고 `segment_final`까지 약 0.95초다 (VAD 쉼 0.8초 + 처리).
 
 마지막 빈 문장(seq 12, 13)은 말없이 쉬다가 `end`를 보내면 생긴다. `is_last` 문장을 꼭 보내기 때문이고, 백엔드는 `text`가 비었으니 무시하면 된다.
 
