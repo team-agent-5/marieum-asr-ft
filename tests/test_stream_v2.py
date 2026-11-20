@@ -172,6 +172,21 @@ def test_word_split_across_finals_has_no_space():
     assert all(" " not in m["text"] for m in d.msgs if m["type"] == "transcript_delta")
 
 
+def low_first(text):
+    """한 글자짜리 확정은 0.3, 나머지는 0.9."""
+    return 0.3 if len(text.strip()) == 1 else 0.9
+
+
+def test_confidence_is_token_weighted():
+    """구간 confidence = 확정들의 토큰 수 가중 평균. 1토큰 확정 하나가 문장 점수를 반으로 끌어내리지 않는다."""
+    d = Driver(engine=FakeEngine(split_at=1, conf_of=low_first))
+    d.feed(np.concatenate([speech(1.5), silence(2.5)]))  # 소리 조각 5개 → ' 가'(1토큰) + '나다라마'(4토큰)
+    d.end()
+    f = next(m for m in d.msgs if m["type"] == "segment_final")
+    n = len(f["text"])
+    assert n == 5 and f["confidence"] == round((0.3 * 1 + 0.9 * (n - 1)) / n, 4)
+
+
 def test_words_keep_their_spaces():
     """새 단어로 시작하는 확정 사이에는 공백이 남는다 (쉼이 1.75초보다 짧아 같은 구간)."""
     d = Driver()

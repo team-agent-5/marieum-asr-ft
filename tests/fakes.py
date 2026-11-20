@@ -8,7 +8,7 @@ FakeEngine은 NeMo 파이프라인 규칙을 흉내 낸다:
   - 소리 뒤 무음 조각이 eou_chunks개 이어지면(0.32초 × 3 = 960ms ≥ 800ms) partial을 확정한다
   - 띄어쓰기는 NeMo처럼 글자 안에 들어 있다: 새 단어로 시작하는 partial·final만 앞에 공백이 붙는다
     (partial은 ids_to_text_without_stripping, final은 concat_with_space일 때만 separator).
-    split_at번째 소리 조각에서는 단어 중간에 확정한다 (실제 ft_v3: ' 안' 확정 뒤 '녕하세요…')
+    split_at번째 소리 조각에서는 단어 중간에 확정한다 (' 안' 확정 뒤 '녕하세요…')
 """
 
 import time
@@ -22,10 +22,11 @@ SYL = "가나다라마바사아자차카타파하"
 
 
 class FakeEngine:
-    def __init__(self, eou_chunks=3, delay_s=0.0, revise_at=None, slots=32, split_at=None):
+    def __init__(self, eou_chunks=3, delay_s=0.0, revise_at=None, slots=32, split_at=None, conf_of=None):
         self.chunk_samples = CHUNK
         self.eou_chunks, self.delay_s, self.revise_at, self.slots = eou_chunks, delay_s, revise_at, slots
         self.split_at = split_at
+        self.conf_of = conf_of or (lambda text: 0.9)  # 확정 글자 → confidence
         self.states = {}
         self.max_states = 0  # 한꺼번에 살아 있던 stream 수의 최대
         self.steps = []  # 각 step의 stream_id 목록
@@ -69,7 +70,8 @@ class FakeEngine:
                     final, st["partial"] = st["partial"], ""
             if r.is_last and st["partial"]:
                 final, st["partial"] = final + st["partial"], ""
-            segs = [(0.0, r.audio_end_ms / 1000, 0.9)] if final else []
+            # (start_s, end_s, conf, 토큰 수). 가짜 엔진은 글자 하나 = 토큰 하나
+            segs = [(0.0, r.audio_end_ms / 1000, self.conf_of(final), len(final.strip()))] if final else []
             outs.append(StepOut(r.stream_id, final, segs, st["partial"]))
             if r.is_last:
                 del self.states[r.stream_id]

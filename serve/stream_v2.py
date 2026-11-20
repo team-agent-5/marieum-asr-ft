@@ -43,7 +43,7 @@ class VSeg:
 class Fin:
     emit_ms: int
     text: str
-    confs: list = field(default_factory=list)
+    confs: list = field(default_factory=list)  # [(conf, 토큰 수)]
 
 
 def _join(parts):
@@ -51,6 +51,14 @@ def _join(parts):
     앞에 공백이 붙고, 단어 중간에서 확정되면 다음 글자는 공백 없이 온다 (' 안' + '녕하세요').
     조각마다 공백을 지우고 다시 넣으면 단어 중간에 공백이 생긴다. 양 끝만 지운다."""
     return "".join(p for p in parts if p).strip()
+
+
+def token_conf(pairs):
+    """[(conf, 토큰 수)] → 토큰 수 가중 평균. 확정마다 단순 평균하면 1토큰 확정(예: 0.35)이 13토큰 확정(0.76)과
+    같은 무게가 되어 문장 점수가 0.55로 내려간다. 11-20 TTS 360문장 실험에서 가중 평균이 틀린 문장을 더 잘 가려냈다
+    (AUROC CER>0.2: 0.758 vs 0.731, Spearman -0.594 vs -0.562, 글자가 나온 102문장)."""
+    total = sum(k for _, k in pairs)
+    return round(sum(c * k for c, k in pairs) / total, 4) if total else 0.0
 
 
 def file_reqs(stream_id, x, n):
@@ -187,7 +195,7 @@ class StreamV2:
     def on_step(self, req, out):
         self.processed_ms = max(self.processed_ms, req.audio_end_ms)
         if out.final_text.strip():
-            self.fins.append(Fin(req.audio_end_ms, out.final_text, [c for _, _, c in out.final_segments]))
+            self.fins.append(Fin(req.audio_end_ms, out.final_text, [(c, k) for _, _, c, k in out.final_segments]))
         self.partial = out.partial_text or ""
         if req.is_last:
             self.drained = True
@@ -235,8 +243,7 @@ class StreamV2:
             self.fins = [f for f in self.fins if f.emit_ms > v.close_ms]
             parts = [f.text for f in mine]
         text = _join(parts)
-        confs = [c for f in mine for c in f.confs]
-        conf = round(sum(confs) / len(confs), 4) if (confs and text) else 0.0
+        conf = token_conf([p for f in mine for p in f.confs]) if text else 0.0
         return self.msg("segment_final", segment_id=v.seg_id, text=text, start_ms=v.start_ms,
                         end_ms=v.speech_end_ms, reason=v.reason, confidence=conf,
                         no_speech_prob=0.0 if text else 1.0, is_last=v.is_last)

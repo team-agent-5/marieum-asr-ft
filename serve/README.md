@@ -42,6 +42,27 @@ v1 `/asr-stream`(Whisper)은 이 서버에 없다. 백엔드가 v1 모양을 그
 | 3.3: `start`에서 빈 `stream_id`를 받는다 | 1, 2, 3…으로 계속 늘린다 | NeMo가 `stream_id`를 상태 칸에 딕셔너리로 연결한다 (`context_manager.py`). 번호가 커도 된다 |
 | 3.5에 없음 | `ML_ASR_MAX_CONCURRENT`(4): `POST /asr` 동시 처리 한도. 넘는 요청은 기다린다 | 파일도 끝날 때까지 상태 칸 하나를 쓴다. 칸이 모자라면 NeMo가 step 전체를 실패시켜서, 같이 묶인 실시간 세션까지 `INTERNAL`로 끝난다. `num_slots`는 세션 한도 + 파일 한도 + `batch_max` 이상으로 잡는다 |
 
+**confidence 집계 (11-20):** 파이프라인은 확정마다 그 토큰들의 평균 confidence를 준다. 구간(`segment_final`)과 파일(`segments`, 전체)의 confidence는 그 확정들을 **토큰 수로 가중 평균**한다 (`stream_v2.token_conf`). 확정마다 단순 평균하면 1토큰 확정(0.35) 하나가 13토큰 확정(0.76)과 같은 무게가 되어 0.55로 떨어진다. 토큰 수는 확정 글자를 모델 토크나이저로 다시 나눠 센다 (`engine.n_tokens`).
+
+| TTS 360문장 실험 (9목소리 × 2속도 × 20문장, 구 사이 쉼 0.9~1.5초, 잡음 SNR 없음/15/5/0) 중 글자가 나온 102문장 | 확정 단순 평균 | 토큰 가중 평균 |
+|---|---|---|
+| Spearman(confidence, CER) (음수일수록 좋다) | -0.562 | **-0.594** |
+| AUROC: CER > 0.2 문장을 낮은 confidence로 가려내기 | 0.731 | **0.758** (차이 95% CI +0.003 ~ +0.053) |
+| AUROC: CER > 0 | 0.766 | **0.794** (CI -0.009 ~ +0.069) |
+
+차이는 작지만 모든 지표에서 토큰 가중이 낫다.
+
+**confidence 계산 방식 (11-20, 같은 360문장, 토큰 가중):** 방식을 바꿔도 전사 글자는 360문장 모두 같았다. 점수의 크기와 가려내는 힘만 달라진다.
+
+| `confidence.method_cfg` | 맞은 문장(CER 0) 중앙값 (범위) | 틀린 문장(CER > 0.2) 중앙값 | AUROC CER > 0.2 |
+|---|---|---|---|
+| entropy tsallis α=0.5 exp (NeMo 기본, 지금) | 0.561 (0.372 ~ 0.698) | 0.332 | **0.758** |
+| entropy tsallis α=0.33 exp | 0.213 (0.034 ~ 0.439) | 0.062 | 0.762 |
+| entropy gibbs α=1 lin | 0.963 (0.943 ~ 0.979) | 0.934 | 0.719 |
+| max_prob | 0.914 (0.857 ~ 0.952) | 0.856 | 0.703 |
+
+지금 방식을 둔다. 점수가 낮게 나오는 척도이므로 백엔드 기준값은 이 점수로 다시 정한다 (`docs/backend_api_v2.md`). 같은 실험에서 360문장 중 258문장은 글자가 하나도 안 나왔다 (잡음 없는 문장도 85개 중 37개). 사람 목소리가 아닌 TTS라서 생긴 일인지는 따로 봐야 한다 (handoff 6절 5단계 정상 발화 확인).
+
 `transcript_delta`는 열린 구간에만 보낸다. 오디오를 실제 속도보다 빨리 보내서 VAD가 구간을 먼저 닫으면, 그 구간 글자는 delta 없이 `segment_final`로만 온다.
 
 ## 실행 (GPU 서버)
@@ -77,7 +98,7 @@ pip install -r serve/requirements.txt
 pytest
 ```
 
-`tests/fakes.py`의 가짜 엔진이 NeMo 파이프라인 규칙(stream별 상태, `is_first`/`is_last`, 한 step에 같은 stream 하나, 상태 칸 수, 글자 안의 띄어쓰기)을 어기면 바로 실패한다. 테스트 26개 (11-20 통과).
+`tests/fakes.py`의 가짜 엔진이 NeMo 파이프라인 규칙(stream별 상태, `is_first`/`is_last`, 한 step에 같은 stream 하나, 상태 칸 수, 글자 안의 띄어쓰기)을 어기면 바로 실패한다. 테스트 29개 (11-20 통과).
 
 발화마다 남는 로그 (handoff 9.6, 글자는 찍지 않는다): `segment_final` 이벤트에 `speech_ms`, `first_delta_ms`(말 시작 오디오 도착 → 첫 delta, delta가 없었으면 null), `final_ms`(말 끝 오디오 도착 → final, `latency_ms`와 같은 값), `chars`, `deltas`, `revised`, `reason`, `confidence`.
 
@@ -88,7 +109,7 @@ pytest
 1. ~~`NemotronEngine`이 뜨는가~~ **확인 (11-20):** `model_loaded`, `chunk_ms` 320, `/healthz` 200
 2. 마지막 조각을 0으로 채우고 `length`에 실제 길이를 넣는 방식이 파이프라인에서 문제없는가. 남은 오디오가 없으면 무음 한 조각(0.32초)을 `is_last`로 보낸다
 3. `final_segments`의 `start`/`end`: NeMo 코드로는 초 단위다 (`bpe_decoder.py`에서 토큰 위치 × 토큰 길이(초)). 실제 값이 stream 시작 기준인지 본다. `POST /asr`의 `start_ms`/`end_ms`에만 쓴다
-4. `confidence`가 0이 아닌 값으로 나오는가. **11-20:** 나온다 (TTS 문장 하나에서 파일 0.70, 실시간 0.55). 분포는 아직 모른다. NeMo 기본은 `preserve_frame_confidence: false`(이때 모두 0.0)이고 `engine.py`가 `true`로 켠다. 방식은 entropy(tsallis, alpha 0.5)의 평균이다. 지금까지 실험(EXP-015 ~ 017)은 신뢰도를 끄고 돌렸으므로 값의 분포를 처음 본다. 백엔드가 confidence 기준값을 쓰면 test_v2 녹음으로 분포를 보고 정한다. 켠 상태의 step 시간도 다시 잰다
+4. `confidence`가 0이 아닌 값으로 나오는가. **11-20:** 나온다. 같은 소리면 파일과 실시간이 같은 값이다 (0.7029). 처음 본 실시간 0.55는 시험 스크립트가 WAV 헤더(`FLLR` 4KB)를 소리로 넣어서 생긴 값이었다. 분포는 아직 모른다. NeMo 기본은 `preserve_frame_confidence: false`(이때 모두 0.0)이고 `engine.py`가 `true`로 켠다. 방식은 entropy(tsallis, alpha 0.5)의 평균이다. 지금까지 실험(EXP-015 ~ 017)은 신뢰도를 끄고 돌렸으므로 값의 분포를 처음 본다. 백엔드가 confidence 기준값을 쓰면 test_v2 녹음으로 분포를 보고 정한다. 켠 상태의 step 시간도 다시 잰다
 5. 같은 녹음을 `conversation`과 `utterance`로 넣어 이어 붙인 글자가 같은가 (코드상 같아야 한다)
 6. test_v2 녹음 몇 개를 v2로 실제 속도로 흘려 CER이 EXP-015(27.86)와 같은 수준인가, 지연 목표(말 끝 → 마지막 delta p95 ≤ 800ms, 4세션 `OVERLOADED` 0, step p95 ≤ 160ms)를 지키는가 (handoff 6절 4단계)
 

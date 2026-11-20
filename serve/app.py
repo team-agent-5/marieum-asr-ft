@@ -27,7 +27,7 @@ from colab.marieum_stream import CONVERSATION, MODES, SR
 
 from .config import settings as S
 from .scheduler import StepScheduler
-from .stream_v2 import StreamV2, file_reqs
+from .stream_v2 import StreamV2, file_reqs, token_conf
 
 ENDPOINT = "/asr-stream/v2"
 TRACE_RE = re.compile(r"^[A-Za-z0-9_\-]{1,64}$")
@@ -229,7 +229,13 @@ class Session:
         if err is not None:
             self.fail("INTERNAL", "전사 중 서버 오류가 발생했습니다.")
             return
-        self.send(self.st.on_step(req, out))
+        try:
+            msgs = self.st.on_step(req, out)
+        except Exception as e:  # noqa: BLE001 - 콜백 예외는 이벤트 루프가 삼켜서 세션이 멈춘 채 남는다
+            log("step_result_failed", self.trace_id, status="error", message=repr(e))
+            self.fail("INTERNAL", "전사 중 서버 오류가 발생했습니다.")
+            return
+        self.send(msgs)
 
     def fail(self, code, message):
         log("error", self.trace_id, status="error", code=code, message=message)
@@ -510,23 +516,23 @@ async def asr_file(srv, request, sample_rate, trace_id):
         if not out.final_text.strip():
             continue
         g = out.final_segments
-        start_ms = round(min(a for a, _, _ in g) * 1000) if g else prev_ms
-        end_ms = round(max(b for _, b, _ in g) * 1000) if g else req.audio_end_ms
+        start_ms = round(min(seg[0] for seg in g) * 1000) if g else prev_ms
+        end_ms = round(max(seg[1] for seg in g) * 1000) if g else req.audio_end_ms
+        pairs = [(c, k) for _, _, c, k in g]
         if segs and not out.final_text[0].isspace():
             # 앞 확정의 단어가 이어진다 (' 안' + '녕하세요'). 공백 없이 앞 구간에 붙인다
             s = segs[-1]
             s["text"] = (s["text"] + out.final_text.rstrip())[:MAX_TEXT]
             s["end_ms"] = max(s["end_ms"], end_ms)
-            confs[-1] += [c for _, _, c in g]
+            confs[-1] += pairs
         else:
             segs.append({"text": out.final_text.strip()[:MAX_TEXT], "confidence": 0.0, "start_ms": start_ms,
                          "end_ms": end_ms})
-            confs.append([c for _, _, c in g])
+            confs.append(pairs)
         prev_ms = req.audio_end_ms
     for s, cs in zip(segs, confs):
-        s["confidence"] = round(sum(cs) / len(cs), 4) if cs else 0.0
-    total = sum(max(1, s["end_ms"] - s["start_ms"]) for s in segs)
-    conf = round(sum(s["confidence"] * max(1, s["end_ms"] - s["start_ms"]) for s in segs) / total, 4) if segs else 0.0
+        s["confidence"] = token_conf(cs)
+    conf = token_conf([p for cs in confs for p in cs])  # 구간 길이가 아니라 토큰 수로 (stream_v2.token_conf)
     body = {"trace_id": trace, "text": " ".join(s["text"] for s in segs)[:MAX_TEXT], "confidence": conf,
             "duration_ms": len(x) * 1000 // SR, "model_version": S.model_version, "segments": segs}
     log("transcript_file", trace, endpoint="/asr", status="ok", latency_ms=round((time.perf_counter() - t0) * 1000),

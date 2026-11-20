@@ -31,7 +31,9 @@ class Req:
 class StepOut:
     stream_id: int
     final_text: str  # 직전 발화 끝(EoU) 이후 이번에 확정된 글자. 앞에 구분 공백이 붙을 수 있다
-    final_segments: list = field(default_factory=list)  # [(start_s, end_s, conf)]
+    # [(start_s, end_s, conf, 토큰 수)]. conf는 그 구간 토큰 confidence의 평균이다.
+    # 토큰 수는 구간 여러 개를 합칠 때 가중치로 쓴다 (1토큰 확정이 긴 확정과 같은 무게가 되지 않게)
+    final_segments: list = field(default_factory=list)
     partial_text: str = ""  # 마지막 확정 이후 지금까지 (확정 전)
 
 
@@ -79,8 +81,13 @@ class NemotronEngine:
                               options=self._opts if r.is_first else None) for r in reqs]
         outs = self.pipe.transcribe_step(frames)
         return [StepOut(o.stream_id, o.final_transcript,
-                        [(float(g.start), float(g.end), float(g.conf)) for g in (o.final_segments or [])],
+                        [(float(g.start), float(g.end), float(g.conf), self.n_tokens(g.text))
+                         for g in (o.final_segments or [])],
                         o.partial_transcript) for o in outs]
+
+    def n_tokens(self, text):
+        """TextSegment에는 토큰 수가 없어서 확정 글자를 모델 토크나이저로 다시 나눈다 (내보낸 토큰 수와 거의 같다)."""
+        return max(1, len(self.pipe.tokenizer.text_to_ids(text.strip())))
 
     def warmup(self, batch_max):
         """준비 완료(/healthz 200) 전에 1개, batch_max개 묶음으로 몇 조각씩 돌려 둔다."""

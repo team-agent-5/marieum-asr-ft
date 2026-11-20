@@ -193,6 +193,24 @@ def test_internal_error_keeps_vad_until_worker_done():
     assert bad == []
 
 
+def test_bad_step_result_ends_session_with_internal(client, engine, monkeypatch):
+    """결과 처리 중 예외가 나도 세션이 멈춰 있지 않고 INTERNAL로 끝난다."""
+    def broken(req, out):
+        raise ValueError("bad pipeline output")
+
+    monkeypatch.setattr(appmod.StreamV2, "on_step", lambda self, req, out: broken(req, out))
+    with client.websocket_connect("/asr-stream/v2") as ws:
+        ws.send_text(json.dumps({"type": "start", "trace_id": "bad", "sample_rate": 16000}))
+        json.loads(ws.receive_text())
+        send_audio(ws, speech(1.0))
+        err = recv_until(ws, "error")[-1]
+        assert err["code"] == "INTERNAL" and err["fatal"]
+    deadline = time.time() + 2
+    while (engine.states or appmod.Session.live) and time.time() < deadline:
+        time.sleep(0.01)
+    assert appmod.Session.live == {} and engine.states == {}
+
+
 def test_concurrent_sessions_are_batched():
     eng = FakeEngine(delay_s=0.02)
     c = make_client(eng)
@@ -258,6 +276,22 @@ def test_post_asr_word_split_has_no_space():
         body = r.json()
         assert r.status_code == 200 and body["text"] and " " not in body["text"]
         assert len(body["segments"]) == 1 and body["segments"][0]["text"] == body["text"]
+    finally:
+        c.__exit__(None, None, None)
+
+
+def test_post_asr_confidence_is_token_weighted():
+    """파일도 구간·전체 confidence를 토큰 수로 가중 평균한다."""
+    eng = FakeEngine(split_at=1, conf_of=lambda t: 0.3 if len(t.strip()) == 1 else 0.9)
+    c = make_client(eng)
+    try:
+        body = c.post("/asr?sample_rate=16000&trace_id=cw",
+                      content=pcm16(np.concatenate([speech(1.5), silence(1.5), speech(0.7), silence(1.5)]))).json()
+        n0 = len(body["segments"][0]["text"])  # 첫 구간: 1토큰(0.3) + 나머지(0.9)
+        assert body["segments"][0]["confidence"] == round((0.3 + 0.9 * (n0 - 1)) / n0, 4)
+        assert body["segments"][1]["confidence"] == 0.9
+        n1 = len(body["segments"][1]["text"])
+        assert body["confidence"] == round((0.3 + 0.9 * (n0 - 1) + 0.9 * n1) / (n0 + n1), 4)
     finally:
         c.__exit__(None, None, None)
 
