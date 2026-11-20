@@ -121,7 +121,7 @@ curl -X POST --data-binary @rec.pcm "http://10.1.2.6:8001/asr?sample_rate=16000&
 - `revised: true` → 앞서 보낸 글자가 바뀌었다. 이 문장 글자를 `text`로 통째로 바꾼다 (`append`는 빈 문자열). 지금 설정에서는 드물다
 - `segment_final.text`가 그 문장의 기준이다. 보통 마지막 delta의 `text`와 같지만, 확정 직전에 나온 글자는 delta 없이 final에만 들어올 수 있다
 
-`segment_final.reason`: `silence`(1.75초 쉬었다) / `max_length`(쉬지 않고 15초) / `end`(`end`를 받음) / `too_long`(세션 길이 초과).
+`segment_final.reason`: `silence`(0.8초 쉬었다) / `max_length`(쉬지 않고 15초) / `end`(`end`를 받음) / `too_long`(세션 길이 초과).
 
 ### 순서 보장
 
@@ -151,9 +151,9 @@ fatal 오류로 세션이 끝나도 연결은 열려 있다 (`MODEL_UNAVAILABLE`
 | | `conversation` (기본) | `utterance` |
 | --- | --- | --- |
 | 맞는 화면 | 마이크를 켜 두고 계속 듣는 대화 화면 | 버튼을 누르고 한 마디 하는 화면 |
-| 문장 끝을 정하는 곳 | 서버 (1.75초 쉬면). 쉬지 않고 15초면 자른다 | 백엔드 (`end`를 보낼 때) |
+| 문장 끝을 정하는 곳 | 서버 (0.8초 쉬면). 쉬지 않고 15초면 자른다 | 백엔드 (`end`를 보낼 때) |
 | 세션 하나에 문장 | 여러 개 (`segment_id` 0, 1, 2…) | 하나 (`segment_id` 0) |
-| 쉬었다 다시 말하면 | 1.75초 넘게 쉬면 다음 문장 | 같은 문장에 계속 붙는다 |
+| 쉬었다 다시 말하면 | 0.8초 넘게 쉬면 다음 문장. 말 중간에 1초쯤 쉬면 한 문장이 둘로 나뉜다 | 같은 문장에 계속 붙는다 |
 | `segment_final` | 문장이 닫힐 때마다 (`is_last: false`), `end` 뒤 마지막 하나 (`is_last: true`) | `end` 뒤 한 번 (`is_last: true`) |
 | 세션 길이 상한 | 600초 | 10초 |
 

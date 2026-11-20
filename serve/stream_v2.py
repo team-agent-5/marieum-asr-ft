@@ -7,12 +7,12 @@
 
 문장 끊기는 섞은 방식 (3.4, EXP-017):
   - 글자는 파이프라인이 만든다. 파이프라인은 stop_history_eou(800ms)마다 글자를 확정한다 (final_text)
-  - 앱에 보이는 문장 경계(segment_id, segment_final)는 운영 VAD 쉼 1.75초(Segmenter)로 나눈다
-  - 파이프라인 확정은 그것을 낸 조각의 오디오 끝 위치(emit_ms)로 VAD 구간에 붙인다.
-    구간이 close_ms에서 닫혔으면 emit_ms <= close_ms 인 확정이 그 구간 몫이다
-  - 그래서 구간이 닫혀도 파이프라인이 close_ms까지 처리하기를 기다렸다가 segment_final을 보낸다
-  - 확정 전 글자(partial)는 지금 열린 구간에만 보여 준다. 구간을 닫을 때 남은 partial은 다음 구간으로 넘어간다
-    (EoU 800ms가 VAD 1.75초보다 먼저 오므로 보통은 비어 있다. 15초 자르기(max_length)에서는 남을 수 있다)
+  - 앱에 보이는 문장 경계(segment_id, segment_final)는 VAD 쉼(ML_END_SILENCE_MS, 기본 0.8초, Segmenter)으로 나눈다
+  - 구간이 close_ms에서 닫히면 파이프라인이 close_ms까지 처리하기를 기다렸다가, 그때까지 나온 글자를
+    모두(확정 + 확정 전 partial) 그 구간 몫으로 segment_final에 넣는다
+  - VAD 쉼이 확정(말 끝 뒤 p50 1.1초)보다 짧으면 닫을 때 글자가 아직 partial에 있다. 이 글자는 나중에 파이프라인이
+    확정하면서 한 번 더 나오므로(final_text), 이미 보낸 partial(sent_partial)을 다음 글자 앞에서 뺀다
+  - confidence: 확정 글자는 final_segments의 값, 확정 전 글자는 그 토큰들의 confidence(partial_confs)로 낸다
 """
 
 from dataclasses import dataclass, field
@@ -82,6 +82,8 @@ class StreamV2:
         self.vsegs = []  # 아직 segment_final을 안 보낸 구간 (앞에서부터 차례로 보낸다)
         self.fins = []  # 아직 어느 구간에도 붙지 않은 파이프라인 확정
         self.partial = ""
+        self.partial_confs = []  # partial 토큰들의 confidence
+        self.sent_partial = ""  # 닫은 구간에 이미 넣은, 아직 확정되지 않은 글자 (뒤에 오는 글자 앞에서 뺀다)
         self.buf = np.zeros(0, np.float32)
         self.sent_samples = 0  # 파이프라인에 넘긴 오디오 (조각 단위)
         self.received_ms = 0
@@ -197,9 +199,10 @@ class StreamV2:
         if out.final_text.strip():
             self.fins.append(Fin(req.audio_end_ms, out.final_text, [(c, k) for _, _, c, k in out.final_segments]))
         self.partial = out.partial_text or ""
+        self.partial_confs = list(out.partial_confs or [])
         if req.is_last:
             self.drained = True
-            self.partial = ""
+            self.partial, self.partial_confs = "", []
         return self._pump()
 
     def _pump(self):
@@ -224,8 +227,32 @@ class StreamV2:
             out.append(self.msg("session_end", segments=self.next_id, audio_ms=self.received_ms))
         return out
 
+    def _pending(self):
+        """아직 어느 구간에도 안 들어간 글자 조각 [(글자, [(conf, 토큰 수)])]. 확정들 + partial.
+        앞에서 이미 보낸 partial(sent_partial)과 겹치는 글자는 뺀다. 남은 sent_partial도 돌려준다."""
+        pieces = [(f.text, f.confs) for f in self.fins]
+        if self.partial.strip():
+            n = len(self.partial_confs)
+            pieces.append((self.partial, [(sum(self.partial_confs) / n, n)] if n else []))
+        skip, out = self.sent_partial.strip(), []
+        for text, pairs in pieces:
+            if skip:
+                t = text.lstrip()
+                k = min(len(skip), len(t))
+                if t[:k] != skip[:k]:  # 앞서 보낸 글자가 바뀌었다 (revised). 더 빼지 않는다
+                    skip = ""
+                else:
+                    skip, rest = skip[k:], t[k:]
+                    if not rest.strip():
+                        continue  # 이미 보낸 글자뿐인 조각
+                    # 일부만 겹친 조각: 남은 글자만, confidence는 남은 글자 비율만큼의 무게로
+                    pairs = [(c, max(1, round(n * len(rest.strip()) / max(1, len(t.strip()))))) for c, n in pairs]
+                    text = rest
+            out.append((text, pairs))
+        return out, skip
+
     def _delta(self, v):
-        text = _join([f.text for f in self.fins] + [self.partial])
+        text = _join([t for t, _ in self._pending()[0]])
         if text == v.sent:
             return []
         revised = not text.startswith(v.sent)
@@ -235,15 +262,12 @@ class StreamV2:
                          audio_end_ms=self.processed_ms)]
 
     def _final(self, v):
-        if v.is_last:
-            mine, self.fins = self.fins, []
-            parts = [f.text for f in mine] + [self.partial]
-        else:
-            mine = [f for f in self.fins if f.emit_ms <= v.close_ms]
-            self.fins = [f for f in self.fins if f.emit_ms > v.close_ms]
-            parts = [f.text for f in mine]
-        text = _join(parts)
-        conf = token_conf([p for f in mine for p in f.confs]) if text else 0.0
+        pieces, _ = self._pending()
+        text = _join([t for t, _ in pieces])
+        conf = token_conf([p for _, pairs in pieces for p in pairs]) if text else 0.0
+        # 지금까지의 글자는 모두 이 구간 몫이다. 확정 전 글자는 나중에 확정되어 다시 오므로 기억해 두고 뺀다
+        self.fins = []
+        self.sent_partial = "" if v.is_last else self.partial
         return self.msg("segment_final", segment_id=v.seg_id, text=text, start_ms=v.start_ms,
                         end_ms=v.speech_end_ms, reason=v.reason, confidence=conf,
                         no_speech_prob=0.0 if text else 1.0, is_last=v.is_last)

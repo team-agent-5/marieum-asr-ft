@@ -188,13 +188,34 @@ def test_confidence_is_token_weighted():
 
 
 def test_words_keep_their_spaces():
-    """새 단어로 시작하는 확정 사이에는 공백이 남는다 (쉼이 1.75초보다 짧아 같은 구간)."""
+    """새 단어로 시작하는 확정 사이에는 공백이 남는다. 확정(가짜 960ms)보다 길고 VAD 쉼보다 짧은 쉼이 필요해서
+    VAD 쉼을 1.75초로 둔다 (띄어쓰기 시험이지 VAD 시험이 아니다)."""
+    s = Settings()
+    s.end_silence_ms = 1750
     d = Driver()
+    d.st = StreamV2("t1", CONVERSATION, s, 7, CHUNK, d.vad)
     d.feed(np.concatenate([speech(1.0), silence(1.2), speech(1.0), silence(2.5)]))
     d.end()
     check_protocol(d.msgs)
     f = next(m for m in d.msgs if m["type"] == "segment_final")
     assert f["text"].count(" ") == 1 and not f["text"].startswith(" ")
+
+
+def test_short_end_silence_keeps_text_in_its_segment():
+    """VAD 쉼(0.8초)이 파이프라인 확정(EoU, 가짜 960ms)보다 짧아도 글자가 제 문장에 남는다.
+    닫을 때 확정 전 글자를 그 문장에 넣고, 나중에 같은 글자가 확정되면 다음 문장에서 뺀다."""
+    s = Settings()
+    s.end_silence_ms = 800
+    d = Driver()
+    d.st = StreamV2("t1", CONVERSATION, s, 7, CHUNK, d.vad)
+    d.feed(np.concatenate([speech(1.0), silence(1.2), speech(1.0), silence(2.5)]))
+    d.end()
+    check_protocol(d.msgs)
+    f = [m for m in d.msgs if m["type"] == "segment_final"]
+    texts = [m["text"] for m in f if m["text"]]
+    assert texts == ["가나다", "라마바"]  # 0.8초 쉼으로 두 문장, 글자는 한 번씩만
+    assert all(m["confidence"] > 0 for m in f if m["text"])
+    assert f[0]["reason"] == "silence" and f[-1]["is_last"]
 
 
 def test_long_speech_is_cut_at_max_length():

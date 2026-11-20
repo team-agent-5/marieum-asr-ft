@@ -36,11 +36,11 @@ class Settings:
     # POST /asr 파일도 끝날 때까지 상태 칸 하나를 쓴다. 넘는 요청은 기다린다
     asr_max_concurrent: int = _i("ML_ASR_MAX_CONCURRENT", 4)
 
-    # ---- VAD·구간 (v1과 같은 값, marieum-ai CALIBRATION.md §0.2) ----
+    # ---- VAD·구간 (end_silence_ms 말고는 marieum-ai CALIBRATION.md §0.2와 같은 값) ----
     vad_threshold: float = _f("ML_VAD_THRESHOLD", 0.5)
     speech_pad_ms: int = _i("ML_SPEECH_PAD_MS", 200)
     min_speech_ms: int = _i("ML_MIN_SPEECH_MS", 150)
-    end_silence_ms: int = _i("ML_END_SILENCE_MS", 1750)
+    end_silence_ms: int = _i("ML_END_SILENCE_MS", 800)  # 11-20: 1750 → 800 (문장 확정을 빨리). stream_v2 맨 위 설명
     utterance_max_s: float = _f("ML_UTTERANCE_MAX_S", 10.0)
     max_segment_s: float = _f("ML_MAX_SEGMENT_S", 15.0)
     session_max_s: float = _f("ML_SESSION_MAX_S", 600.0)

@@ -35,6 +35,9 @@ class StepOut:
     # 토큰 수는 구간 여러 개를 합칠 때 가중치로 쓴다 (1토큰 확정이 긴 확정과 같은 무게가 되지 않게)
     final_segments: list = field(default_factory=list)
     partial_text: str = ""  # 마지막 확정 이후 지금까지 (확정 전)
+    # 확정 전 토큰들의 confidence (NeMo state.confidences: 확정(EoU) 때 비운다).
+    # VAD가 확정보다 먼저 구간을 닫을 때 그 구간 confidence에 쓴다
+    partial_confs: list = field(default_factory=list)
 
 
 def make_cfg(s):
@@ -83,7 +86,14 @@ class NemotronEngine:
         return [StepOut(o.stream_id, o.final_transcript,
                         [(float(g.start), float(g.end), float(g.conf), self.n_tokens(g.text))
                          for g in (o.final_segments or [])],
-                        o.partial_transcript) for o in outs]
+                        o.partial_transcript, self.partial_confs(o)) for o in outs]
+
+    def partial_confs(self, o):
+        """확정 전 글자(partial)의 토큰 confidence. 마지막 조각 뒤에는 상태가 지워져서 없다."""
+        st = self.pipe.get_state(o.stream_id)
+        if st is None or not o.partial_transcript.strip():
+            return []
+        return [float(c) for c in (getattr(st, "confidences", None) or [])]
 
     def n_tokens(self, text):
         """TextSegment에는 토큰 수가 없어서 확정 글자를 모델 토크나이저로 다시 나눈다 (내보낸 토큰 수와 거의 같다)."""

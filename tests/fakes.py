@@ -72,7 +72,8 @@ class FakeEngine:
                 final, st["partial"] = final + st["partial"], ""
             # (start_s, end_s, conf, 토큰 수). 가짜 엔진은 글자 하나 = 토큰 하나
             segs = [(0.0, r.audio_end_ms / 1000, self.conf_of(final), len(final.strip()))] if final else []
-            outs.append(StepOut(r.stream_id, final, segs, st["partial"]))
+            # 확정 전 글자의 토큰별 confidence (NeMo state.confidences). 가짜 엔진은 글자 하나 = 토큰 하나, 0.8
+            outs.append(StepOut(r.stream_id, final, segs, st["partial"], [0.8] * len(st["partial"].strip())))
             if r.is_last:
                 del self.states[r.stream_id]
         return outs
