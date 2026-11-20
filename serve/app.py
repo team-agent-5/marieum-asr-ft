@@ -20,13 +20,14 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
 import numpy as np
-from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 
 from colab.marieum_stream import CONVERSATION, MODES, SR
 
 from .config import settings as S
 from .scheduler import StepScheduler
+from .reference import Reference, hint_words
 from .stream_v2 import StreamV2, file_reqs, token_conf
 
 ENDPOINT = "/asr-stream/v2"
@@ -132,11 +133,11 @@ class Conn:
 class Session:
     live = {}  # stream_id -> Session
 
-    def __init__(self, srv, conn, trace_id, patient_id, mode, sr, vad):
+    def __init__(self, srv, conn, trace_id, patient_id, mode, sr, vad, hints=(), reference=None):
         self.srv, self.conn, self.trace_id, self.patient_id, self.mode, self.sr = srv, conn, trace_id, patient_id, mode, sr
         self.vad = vad
         self.sid = next(srv.stream_ids)
-        self.st = StreamV2(trace_id, mode, S, self.sid, srv.engine.chunk_samples, vad)
+        self.st = StreamV2(trace_id, mode, S, self.sid, srv.engine.chunk_samples, vad, hints, reference)
         self.odd = b""
         self.bytes_total = 0
         self.t_start = time.perf_counter()
@@ -169,7 +170,7 @@ class Session:
                     chars=len(m["text"]), confidence=m["confidence"], is_last=m["is_last"],
                     speech_ms=m["end_ms"] - m["start_ms"], first_delta_ms=g.get("first_delta_ms"),
                     final_ms=final_ms, deltas=g.get("deltas", 0), revised=g.get("revised", 0),
-                    latency_ms=final_ms)
+                    latency_ms=final_ms, **({"snapped": m["snapped"]} if "snapped" in m else {}))
             elif m["type"] == "session_end":
                 self.cleanup("ok")
 
@@ -361,8 +362,9 @@ def create_app(engine_factory=default_engine, vad_factory=SileroVad):
             conn.writer.cancel()
 
     @app.post("/asr")
-    async def asr(request: Request, sample_rate: int | None = None, trace_id: str | None = None):
-        return await asr_file(srv, request, sample_rate, trace_id)
+    async def asr(request: Request, sample_rate: int | None = None, trace_id: str | None = None,
+                  reference: list[str] | None = Query(None), hints: list[str] | None = Query(None)):
+        return await asr_file(srv, request, sample_rate, trace_id, reference, hints)
 
     return app
 
@@ -395,6 +397,29 @@ async def handle_text(srv, conn, raw):
         conn.error(trace, "INVALID_FORMAT", f"알 수 없는 메시지 type: {kind!r}")
 
 
+def parse_reading(reference, hints):
+    """start.reference / start.hints (POST /asr는 ?reference= ?hints=) → (힌트 단어, Reference 또는 None).
+    reference: 읽을 문서 문장 목록 (또는 줄바꿈으로 나눈 문자열). 주면 그 어절이 힌트가 되고 final을 문서에 맞춘다.
+    hints: 힌트 단어 목록. 주면 reference에서 만든 힌트 대신 이것을 쓴다 ([]면 힌트 없이 맞추기만). 틀리면 ValueError"""
+    if isinstance(reference, str):
+        reference = reference.splitlines()
+    if reference is not None:
+        if not isinstance(reference, list) or not all(isinstance(x, str) for x in reference):
+            raise ValueError("reference는 문장 문자열 목록이어야 합니다.")
+        if sum(len(x) for x in reference) > S.max_reference_chars:
+            raise ValueError(f"reference는 모두 합쳐 {S.max_reference_chars}자까지 받습니다.")
+    if hints is not None:
+        if not isinstance(hints, list) or not all(isinstance(x, str) for x in hints):
+            raise ValueError("hints는 단어 문자열 목록이어야 합니다.")
+        if len(hints) > S.max_hints or any(len(x) > S.max_hint_chars for x in hints):
+            raise ValueError(f"hints는 {S.max_hints}개, 하나에 {S.max_hint_chars}자까지 받습니다.")
+        words = [h.strip() for h in hints if h.strip()]
+    else:
+        words = hint_words(reference or [], S.max_hints)
+    ref = Reference(reference, max_ratio=S.snap_max_ratio, min_chars=S.snap_min_chars) if reference else None
+    return tuple(dict.fromkeys(words)), (ref if ref else None)
+
+
 async def start_session(srv, conn, p, trace):
     enc, sr, mode = p.get("encoding", "pcm16"), p.get("sample_rate"), p.get("mode", CONVERSATION)
     if enc != "pcm16":
@@ -405,11 +430,16 @@ async def start_session(srv, conn, p, trace):
         return conn.error(trace, "INVALID_FORMAT", f"mode는 {MODES} 중 하나여야 합니다.")
     if p.get("language", "ko") != "ko":
         return conn.error(trace, "INVALID_FORMAT", "language는 ko만 지원합니다.")
+    try:
+        hints, ref = parse_reading(p.get("reference"), p.get("hints"))
+    except ValueError as e:
+        return conn.error(trace, "INVALID_FORMAT", str(e))
     if len(Session.live) >= S.max_sessions:
         return conn.error(trace, "OVERLOADED", f"동시 세션이 한도({S.max_sessions})에 찼습니다.")
     vad = await asyncio.get_running_loop().run_in_executor(vad_pool, srv.vads.acquire)
-    s = Session(srv, conn, trace, str(p.get("patient_id", ""))[:64], mode, sr, vad)
-    log("start", trace, status="ok", patient_id=s.patient_id, mode=mode, sample_rate=sr, stream_id=s.sid)
+    s = Session(srv, conn, trace, str(p.get("patient_id", ""))[:64], mode, sr, vad, hints, ref)
+    log("start", trace, status="ok", patient_id=s.patient_id, mode=mode, sample_rate=sr, stream_id=s.sid,
+        hints=len(hints), reference_chars=len(ref.text) if ref else 0)
 
 
 # ---- POST /asr: 녹음 파일 한 번에 전사 --------------------------------------
@@ -457,7 +487,7 @@ def asr_error(status, code, message, trace):
     return JSONResponse({"code": code, "message": message, "trace_id": trace}, status_code=status)
 
 
-async def run_file(srv, x):
+async def run_file(srv, x, hints=()):
     """파일 오디오를 stream 하나로 파이프라인에 넣고 조각마다 (Req, StepOut)을 모은다."""
     sid = next(srv.stream_ids)
     done = asyncio.get_running_loop().create_future()
@@ -473,7 +503,7 @@ async def run_file(srv, x):
         if req.is_last:
             done.set_result(None)
 
-    for r in file_reqs(sid, x, srv.engine.chunk_samples):
+    for r in file_reqs(sid, x, srv.engine.chunk_samples, hints):
         srv.scheduler.submit(r, on_step)
     try:
         await done
@@ -483,7 +513,7 @@ async def run_file(srv, x):
     return outs
 
 
-async def asr_file(srv, request, sample_rate, trace_id):
+async def asr_file(srv, request, sample_rate, trace_id, reference=None, hints=None):
     """파일 하나를 stream 하나로 보고 같은 파이프라인에 조각을 차례로 넣는다 (3.7). 구간마다 따로 돌리지 않는다 (EXP-006).
     segments는 파이프라인 확정(stop_history_eou) 단위다."""
     trace = trace_id or request.headers.get("x-trace-id") or str(uuid.uuid4())
@@ -494,6 +524,10 @@ async def asr_file(srv, request, sample_rate, trace_id):
     max_bytes = int(S.asr_max_s * 48000 * 2 * 4) + 1024
     if int(request.headers.get("content-length") or 0) > max_bytes:
         return asr_error(413, "AUDIO_TOO_LONG", f"음성은 {S.asr_max_s:g}초까지 받습니다.", trace)
+    try:
+        hint_list, ref = parse_reading(reference, hints)
+    except ValueError as e:
+        return asr_error(400, "INVALID_FORMAT", str(e), trace)
     body = await request.body()
     if not body:
         return asr_error(400, "INVALID_FORMAT", "본문에 음성이 없습니다.", trace)
@@ -506,7 +540,7 @@ async def asr_file(srv, request, sample_rate, trace_id):
 
     try:
         async with srv.file_slots:
-            outs = await run_file(srv, x)
+            outs = await run_file(srv, x, hint_list)
     except Exception as e:  # noqa: BLE001
         log("asr_failed", trace, endpoint="/asr", status="error", message=repr(e))
         return asr_error(500, "INTERNAL", "전사 중 서버 오류가 발생했습니다.", trace)
@@ -533,10 +567,20 @@ async def asr_file(srv, request, sample_rate, trace_id):
     for s, cs in zip(segs, confs):
         s["confidence"] = token_conf(cs)
     conf = token_conf([p for cs in confs for p in cs])  # 구간 길이가 아니라 토큰 수로 (stream_v2.token_conf)
+    raw = " ".join(s["text"] for s in segs)[:MAX_TEXT]
+    snapped = 0
+    if ref is not None:  # 읽기 문서에 맞춘다. 들은 글자는 raw_text로 남긴다
+        for s in segs:
+            s["raw_text"] = s["text"]
+            s["text"], s["snapped"] = ref.snap(s["text"])
+            snapped += s["snapped"]
     body = {"trace_id": trace, "text": " ".join(s["text"] for s in segs)[:MAX_TEXT], "confidence": conf,
             "duration_ms": len(x) * 1000 // SR, "model_version": S.model_version, "segments": segs}
+    if ref is not None:
+        body["raw_text"] = raw
     log("transcript_file", trace, endpoint="/asr", status="ok", latency_ms=round((time.perf_counter() - t0) * 1000),
-        confidence=conf, duration_ms=body["duration_ms"], segments=len(segs), chars=len(body["text"]))
+        confidence=conf, duration_ms=body["duration_ms"], segments=len(segs), chars=len(body["text"]),
+        hints=len(hint_list), snapped=snapped)
     return body
 
 

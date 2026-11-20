@@ -4,6 +4,7 @@ import numpy as np
 
 from colab.marieum_stream import CONVERSATION, UTTERANCE
 from serve.config import Settings
+from serve.reference import Reference
 from serve.stream_v2 import StreamV2
 
 from fakes import CHUNK, FakeEngine, FakeVad, silence, speech
@@ -216,6 +217,29 @@ def test_short_end_silence_keeps_text_in_its_segment():
     assert texts == ["가나다", "라마바"]  # 0.8초 쉼으로 두 문장, 글자는 한 번씩만
     assert all(m["confidence"] > 0 for m in f if m["text"])
     assert f[0]["reason"] == "silence" and f[-1]["is_last"]
+
+
+def test_reference_snaps_final_and_keeps_raw_text():
+    """읽기 문서를 주면 segment_final 글자를 문서에 맞추고, 들은 글자는 raw_text로 남긴다. delta는 들은 그대로."""
+    d = Driver()
+    ref = Reference(["가나다라마바사자 하하하하"])  # 가짜 엔진은 "가나다라마바사아"를 낸다 (한 글자 다름)
+    d.st = StreamV2("t1", CONVERSATION, Settings(), 7, CHUNK, d.vad, hints=("가나다라바",), reference=ref)
+    d.feed(np.concatenate([speech(2.6), silence(2.5)]))
+    d.end()
+    check_protocol(d.msgs)
+    f = next(m for m in d.msgs if m["type"] == "segment_final")
+    assert f["raw_text"] == "가나다라마바사아" and f["text"] == "가나다라마바사자" and f["snapped"] is True
+    assert d.eng.first_hints[7] == ("가나다라바",)
+    last = next(m for m in d.msgs if m["type"] == "segment_final" and m["is_last"])
+    assert last["text"] == "" and last["snapped"] is False
+
+
+def test_no_reference_no_extra_fields():
+    d = Driver()
+    d.feed(np.concatenate([speech(1.0), silence(2.5)]))
+    d.end()
+    f = next(m for m in d.msgs if m["type"] == "segment_final")
+    assert "raw_text" not in f and "snapped" not in f and d.eng.first_hints[7] == ()
 
 
 def test_long_speech_is_cut_at_max_length():

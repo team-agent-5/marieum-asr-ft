@@ -36,6 +36,14 @@ class Settings:
     # POST /asr 파일도 끝날 때까지 상태 칸 하나를 쓴다. 넘는 요청은 기다린다
     asr_max_concurrent: int = _i("ML_ASR_MAX_CONCURRENT", 4)
 
+    # ---- 읽기 문서·단어 힌트 (start.reference / start.hints, POST /asr ?reference= ?hints=) ----
+    hints_alpha: float = _f("ML_HINTS_ALPHA", 1.0)  # 단어 힌트 세기 (boosting_model_alpha)
+    max_hints: int = _i("ML_MAX_HINTS", 1000)
+    max_hint_chars: int = _i("ML_MAX_HINT_CHARS", 50)  # 힌트 하나의 길이
+    max_reference_chars: int = _i("ML_MAX_REFERENCE_CHARS", 20000)
+    snap_max_ratio: float = _f("ML_SNAP_MAX_RATIO", 0.4)  # 문서에 맞출 때 허용하는 차이 (들은 글자 수 대비)
+    snap_min_chars: int = _i("ML_SNAP_MIN_CHARS", 7)  # 이보다 짧은 조각(글자·숫자만 셈)은 맞추지 않는다
+
     # ---- VAD·구간 (end_silence_ms 말고는 marieum-ai CALIBRATION.md §0.2와 같은 값) ----
     vad_threshold: float = _f("ML_VAD_THRESHOLD", 0.5)
     speech_pad_ms: int = _i("ML_SPEECH_PAD_MS", 200)

@@ -104,6 +104,34 @@ def test_segment_log_fields(client, capsys):
     assert all((r["first_delta_ms"] is None) == (r["deltas"] == 0) for r in segs)  # delta 없이 끝난 발화는 null
 
 
+def test_start_with_reference(client, engine):
+    """start.reference → 문서 어절이 단어 힌트로 첫 조각에 붙고, final이 문서에 맞춰진다."""
+    with client.websocket_connect("/asr-stream/v2") as ws:
+        ws.send_text(json.dumps({"type": "start", "trace_id": "rd", "sample_rate": 16000,
+                                 "reference": ["가나다라마바사자 하하하하.", "타파하가나"]}))
+        json.loads(ws.receive_text())
+        x = np.concatenate([speech(2.6), silence(2.5)])
+        for i in range(0, len(x), 3200):
+            ws.send_bytes(pcm16(x[i:i + 3200]))
+            time.sleep(0.02)
+        ws.send_text(json.dumps({"type": "end", "trace_id": "rd"}))
+        msgs = recv_until(ws, "session_end")
+    f = [m for m in msgs if m["type"] == "segment_final" and m["text"]]
+    assert f[0]["raw_text"] == "가나다라마바사아" and f[0]["text"] == "가나다라마바사자" and f[0]["snapped"]
+    assert ("가나다라마바사자", "하하하하", "타파하가나") in engine.first_hints.values()
+
+
+def test_start_reading_errors(client):
+    with client.websocket_connect("/asr-stream/v2") as ws:
+        for bad in ({"reference": [1, 2]}, {"hints": "가나다"}, {"hints": ["가" * 51]}, {"reference": ["가" * 20001]}):
+            ws.send_text(json.dumps({"type": "start", "trace_id": "e", "sample_rate": 16000, **bad}))
+            err = json.loads(ws.receive_text())
+            assert err["code"] == "INVALID_FORMAT" and err["fatal"] is False, bad
+        ws.send_text(json.dumps({"type": "start", "trace_id": "ok", "sample_rate": 16000,
+                                 "reference": "첫 문장\n둘째 문장", "hints": []}))
+        assert json.loads(ws.receive_text())["type"] == "ready"  # 문자열(줄바꿈) reference, 힌트 끄기
+
+
 def test_errors(client):
     with client.websocket_connect("/asr-stream/v2") as ws:
         ws.send_bytes(pcm16(speech(0.1)))
@@ -278,6 +306,17 @@ def test_post_asr_word_split_has_no_space():
         assert len(body["segments"]) == 1 and body["segments"][0]["text"] == body["text"]
     finally:
         c.__exit__(None, None, None)
+
+
+def test_post_asr_with_reference(client, engine):
+    body = pcm16(np.concatenate([speech(2.6), silence(1.5)]))
+    r = client.post("/asr?sample_rate=16000&trace_id=pr&reference=가나다라마바사자 하하하하&hints=가나다라바", content=body)
+    b = r.json()
+    assert r.status_code == 200 and b["text"] == "가나다라마바사자" and b["raw_text"] == "가나다라마바사아"
+    assert b["segments"][0]["snapped"] is True and b["segments"][0]["raw_text"] == "가나다라마바사아"
+    assert ("가나다라바",) in engine.first_hints.values()
+    r = client.post("/asr?sample_rate=16000", content=body)
+    assert "raw_text" not in r.json() and "snapped" not in r.json()["segments"][0]
 
 
 def test_post_asr_confidence_is_token_weighted():

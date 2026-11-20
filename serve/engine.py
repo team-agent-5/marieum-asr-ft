@@ -25,6 +25,7 @@ class Req:
     is_last: bool
     length: int
     audio_end_ms: int  # 이 조각까지 넣은 오디오 끝 (세션 시작 기준)
+    hints: tuple = ()  # 단어 힌트 (첫 조각에만 쓴다). 세션 동안 그 단어들 쪽으로 인식한다
 
 
 @dataclass
@@ -67,7 +68,11 @@ class NemotronEngine:
 
         if not s.nemo_model or not Path(s.nemo_model).exists():
             raise FileNotFoundError(f"ML_NEMO_MODEL이 없다: {s.nemo_model!r}")
+        from nemo.collections.asr.parts.context_biasing.biasing_multi_model import BiasingRequestItemConfig
+        from nemo.collections.asr.parts.context_biasing.boosting_graph_batched import BoostingTreeModelConfig
         self._torch, self._Frame = torch, Frame
+        self._Opts, self._Bias, self._Tree = ASRRequestOptions, BiasingRequestItemConfig, BoostingTreeModelConfig
+        self.hints_alpha = s.hints_alpha
         # 첫 조각에만 붙인다. 파이프라인 기본값(lang, endpointing)과 같은 값을 명시해 둔다
         self._opts = ASRRequestOptions(language_code=s.language_code, stop_history_eou=s.eou_ms)
         t = time.perf_counter()
@@ -81,12 +86,23 @@ class NemotronEngine:
         """GPU 작업자 스레드 하나에서만 부른다. 한 번에 같은 stream_id 조각을 둘 넣지 않는다 (3.3)."""
         frames = [self._Frame(samples=self._torch.from_numpy(r.samples), stream_id=r.stream_id,
                               is_first=r.is_first, is_last=r.is_last, length=r.length,
-                              options=self._opts if r.is_first else None) for r in reqs]
+                              options=self.options(r.hints) if r.is_first else None) for r in reqs]
         outs = self.pipe.transcribe_step(frames)
         return [StepOut(o.stream_id, o.final_transcript,
                         [(float(g.start), float(g.end), float(g.conf), self.n_tokens(g.text))
                          for g in (o.final_segments or [])],
                         o.partial_transcript, self.partial_confs(o)) for o in outs]
+
+    def options(self, hints=()):
+        """첫 조각 옵션. 힌트가 있으면 그 세션에만 단어 힌트(phrase boosting)를 붙인다.
+        같은 단어 목록은 컴파일한 힌트 모델을 다시 쓴다 (cache_key)."""
+        if not hints:
+            return self._opts
+        key = f"hints-{self.hints_alpha}-" + "\x1f".join(hints)
+        cfg = self._Bias(boosting_model_cfg=self._Tree(key_phrases_list=list(hints)),
+                         boosting_model_alpha=self.hints_alpha, cache_key=key)
+        return self._Opts(language_code=self._opts.language_code, stop_history_eou=self._opts.stop_history_eou,
+                          biasing_cfg=cfg)
 
     def partial_confs(self, o):
         """확정 전 글자(partial)의 토큰 confidence. 마지막 조각 뒤에는 상태가 지워져서 없다."""

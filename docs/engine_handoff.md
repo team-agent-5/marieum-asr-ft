@@ -393,7 +393,7 @@ NVIDIA Speech NIM Realtime API와 비교하면 `transcript_delta` ≈ `conversat
 
 ### 9.7 만드는 순서
 
-> 11-20: 1 ~ 3단계를 이 레포 [`serve/`](../serve/README.md)에 만들었다. 가짜 파이프라인 테스트(`pytest`, 29개)는 통과했고, GPU 서버(L4)에 실제 모델로 띄웠다 (`serve/README.md` "실행"). 아직 확인할 것은 `serve/README.md` 마지막 절에 있다. 이 문서와 다르게 만든 곳(3.4 확정 글자 붙이기와 VAD 쉼 0.8초, `POST /asr` 동시 한도)은 `serve/README.md` "handoff와 다르게 한 곳"에 있다.
+> 11-20: 1 ~ 3단계를 이 레포 [`serve/`](../serve/README.md)에 만들었다. 가짜 파이프라인 테스트(`pytest`, 42개)는 통과했고, GPU 서버(L4)에 실제 모델로 띄웠다 (`serve/README.md` "실행"). 아직 확인할 것은 `serve/README.md` 마지막 절에 있다. 이 문서와 다르게 만든 곳(3.4 확정 글자 붙이기와 VAD 쉼 0.8초, `POST /asr` 동시 한도)은 `serve/README.md` "handoff와 다르게 한 곳"에 있다.
 
 1. **엔진 코어** (`server/engine_nemotron.py`): 3.2 설정으로 파이프라인 만들기, 워밍업, Frame 만들기, GPU 작업자 (3.3). 6절 1단계를 여기서 통과시킨다
 2. **`/asr-stream/v2`**: 세션 ↔ `stream_id`, 결과 → 메시지 (9.4), 한도. 가짜 파이프라인으로 6절 3단계 테스트

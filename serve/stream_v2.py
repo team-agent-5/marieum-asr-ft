@@ -61,20 +61,23 @@ def token_conf(pairs):
     return round(sum(c * k for c, k in pairs) / total, 4) if total else 0.0
 
 
-def file_reqs(stream_id, x, n):
+def file_reqs(stream_id, x, n, hints=()):
     """녹음 파일 하나 → 조각 목록 (POST /asr). 마지막 조각은 0으로 채우고 length에 실제 길이."""
     reqs = []
     for i in range(0, max(len(x), 1), n):
         part = x[i:i + n]
         samples = np.zeros(n, np.float32)
         samples[: len(part)] = part
-        reqs.append(Req(stream_id, samples, i == 0, i + n >= len(x), len(part) or n, (i + len(part)) * 1000 // SR))
+        reqs.append(Req(stream_id, samples, i == 0, i + n >= len(x), len(part) or n, (i + len(part)) * 1000 // SR,
+                        tuple(hints) if i == 0 else ()))
     return reqs
 
 
 class StreamV2:
-    def __init__(self, trace_id, mode, cfg, stream_id, chunk_samples, vad=None):
+    def __init__(self, trace_id, mode, cfg, stream_id, chunk_samples, vad=None, hints=(), reference=None):
+        """hints: 단어 힌트 (첫 조각에 붙인다). reference: serve.reference.Reference (segment_final 글자를 문서에 맞춘다)"""
         self.trace_id, self.mode, self.stream_id, self.n = trace_id, mode, stream_id, chunk_samples
+        self.hints, self.reference = tuple(hints), reference
         self.seg = Segmenter(mode, vad or (lambda w: [0.0] * len(w)), cfg)
         self.min_speech_win = self.seg.min_speech_win
         self.seq = 0
@@ -137,8 +140,9 @@ class StreamV2:
         return self._last_reqs(), self._pump()
 
     def _req(self, samples, length, is_last):
-        r = Req(self.stream_id, np.ascontiguousarray(samples, np.float32), self.sent_samples == 0, is_last,
-                length, 0)
+        first = self.sent_samples == 0
+        r = Req(self.stream_id, np.ascontiguousarray(samples, np.float32), first, is_last, length, 0,
+                self.hints if first else ())
         self.sent_samples += length
         r.audio_end_ms = self.sent_samples * 1000 // SR
         return r
@@ -268,6 +272,11 @@ class StreamV2:
         # 지금까지의 글자는 모두 이 구간 몫이다. 확정 전 글자는 나중에 확정되어 다시 오므로 기억해 두고 뺀다
         self.fins = []
         self.sent_partial = "" if v.is_last else self.partial
+        extra = {}
+        if self.reference is not None:  # 읽기 문서에 맞춘다. 들은 글자는 raw_text로 남긴다
+            snapped, changed = self.reference.snap(text)
+            extra = {"raw_text": text, "snapped": changed}
+            text = snapped
         return self.msg("segment_final", segment_id=v.seg_id, text=text, start_ms=v.start_ms,
                         end_ms=v.speech_end_ms, reason=v.reason, confidence=conf,
-                        no_speech_prob=0.0 if text else 1.0, is_last=v.is_last)
+                        no_speech_prob=0.0 if text else 1.0, is_last=v.is_last, **extra)

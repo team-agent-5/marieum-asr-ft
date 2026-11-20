@@ -29,6 +29,7 @@ class FakeEngine:
         self.conf_of = conf_of or (lambda text: 0.9)  # 확정 글자 → confidence
         self.states = {}
         self.max_states = 0  # 한꺼번에 살아 있던 stream 수의 최대
+        self.first_hints = {}  # stream_id -> 첫 조각에 붙은 단어 힌트
         self.steps = []  # 각 step의 stream_id 목록
         self.load_s = 0.0
         self.gpu = {"name": "fake"}
@@ -47,6 +48,9 @@ class FakeEngine:
                 if len(self.states) >= self.slots:
                     raise RuntimeError("No free slots available")
                 self.states[r.stream_id] = {"partial": "", "sil": 0, "n": 0, "cont": False}
+                self.first_hints[r.stream_id] = r.hints
+            else:
+                assert not r.hints, "힌트는 첫 조각에만 붙는다"
                 self.max_states = max(self.max_states, len(self.states))
             st = self.states.get(r.stream_id)
             assert st is not None, f"is_first 없이 조각이 왔다: {r.stream_id}"

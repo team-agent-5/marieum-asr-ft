@@ -48,6 +48,7 @@ Nemotron ft_v3 ML 서버가 GPU 서버 `10.1.2.6:8001`에서 돌고 있다. 백�
 | 최대 길이 | 60초 |
 | trace_id | `X-Trace-Id` 헤더 또는 `?trace_id=` (영문·숫자·`_-`, 64자 이내). 없으면 서버가 만든다 |
 | 동시 처리 | 파일 4개까지. 넘는 요청은 오류 없이 기다렸다가 처리된다 |
+| 읽기 문서 | `?reference=문장1&reference=문장2…` (선택). 주면 아래 "읽기 문서와 단어 힌트"처럼 힌트를 걸고 결과를 문서에 맞춘다. `?hints=단어&hints=…`로 힌트만 줄 수도 있다. 문서가 길면 URL 길이 한도(보통 8KB)를 넘지 않게 한다 |
 
 ```bash
 curl -X POST -H "Content-Type: audio/wav" -H "X-Trace-Id: abc123" \
@@ -101,6 +102,8 @@ curl -X POST --data-binary @rec.pcm "http://10.1.2.6:8001/asr?sample_rate=16000&
 | `encoding` | 아니오 | `pcm16`만 |
 | `language` | 아니오 | `ko`만 |
 | `patient_id` | 아니오 | 로그용, 64자까지 |
+| `reference` | 아니오 | 읽을 문서. 문장 문자열 목록(또는 줄바꿈으로 나눈 문자열), 모두 합쳐 2만 자까지. 아래 "읽기 문서와 단어 힌트" |
+| `hints` | 아니오 | 힌트 단어 목록 (1000개, 하나에 50자까지). 없으면 `reference`의 어절을 쓴다. `[]`이면 힌트 없이 문서 맞추기만 |
 
 ### 서버 → 백엔드
 
@@ -111,7 +114,7 @@ curl -X POST --data-binary @rec.pcm "http://10.1.2.6:8001/asr?sample_rate=16000&
 | `ready` | `start`를 받아 세션을 만들었을 때 | `engine`("nemotron"), `model_version`, `chunk_ms`(320), `sample_rate` |
 | `segment_start` | 말소리가 150ms 넘게 이어져 새 문장이 열렸을 때. 첫 글자보다 먼저 온다 | `segment_id`(0부터), `start_ms`(세션 시작 기준) |
 | `transcript_delta` | 이 문장의 글자가 늘었을 때 (최대 0.32초마다) | `segment_id`, `append`(새로 붙은 글자), `text`(이 문장의 지금까지 글자 전체), `revised`, `audio_end_ms` |
-| `segment_final` | 문장이 확정됐을 때. 이 뒤로 이 문장의 delta는 없다 | `segment_id`, `text`, `start_ms`, `end_ms`, `reason`, `confidence`, `no_speech_prob`, `is_last` |
+| `segment_final` | 문장이 확정됐을 때. 이 뒤로 이 문장의 delta는 없다 | `segment_id`, `text`, `start_ms`, `end_ms`, `reason`, `confidence`, `no_speech_prob`, `is_last`. `reference`를 준 세션은 `raw_text`(들은 그대로), `snapped`(문서에 맞춰 바꿨는지)도 |
 | `session_end` | `is_last: true`인 `segment_final` 바로 다음 한 번 | `segments`(문장 수), `audio_ms`(받은 오디오 길이) |
 | `error` | 오류 | `code`, `message`, `fatal` |
 
@@ -143,6 +146,28 @@ curl -X POST --data-binary @rec.pcm "http://10.1.2.6:8001/asr?sample_rate=16000&
 | `MODEL_UNAVAILABLE` | 모델 로딩 중에 연결 | 예 | 서버가 1013으로 연결을 닫는다 |
 
 fatal 오류로 세션이 끝나도 연결은 열려 있다 (`MODEL_UNAVAILABLE` 제외). 같은 연결에서 새 `start`를 보낼 수 있다.
+
+## 읽기 문서와 단어 힌트
+
+환자가 정해진 글(동화, 연습 문장)을 읽는 화면이면 `start`에 그 글을 `reference`로 같이 보낸다. 서버가 두 가지를 한다.
+
+1. **단어 힌트:** 문서의 어절(예: "코끼리는", "늘어뜨리고")을 세션 동안 모델 인식에 힌트로 건다 (NeMo phrase boosting, 세기 `ML_HINTS_ALPHA` 1.0). 글자가 처음부터 문서 쪽으로 나온다
+2. **문서 맞추기:** `segment_final.text`를 문서에서 가장 가까운 부분으로 바꾼다. 들은 글자와 차이가 들은 글자 수의 40% 이하일 때만 바꾸고(`ML_SNAP_MAX_RATIO`), 바꾼 부분은 어절 단위로 맞춘다. 문장이 둘로 나뉘어 와도 조각마다 문서의 그 부분으로 바뀐다. 7글자(공백·문장부호 빼고) 미만 조각은 바꾸지 않는다 (`ML_SNAP_MIN_CHARS`)
+
+```json
+{"type":"start","trace_id":"t1","sample_rate":16000,"mode":"conversation",
+ "reference":["코끼리는 귀가 아주 큽니다.","아빠가 토끼 풍선을 사왔습니다."]}
+...
+{"type":"segment_final","segment_id":0,"text":"코끼리는 귀가 아주 큽니다.","raw_text":"코끼리는 귀가 아직 큽니다",
+ "snapped":true,"confidence":0.52,...}
+```
+
+- 화면과 TTS는 `text`를 쓴다. 들은 그대로가 필요하면 `raw_text`
+- `transcript_delta`는 들은 그대로 온다 (힌트는 걸려 있다). 맞추기는 문장이 확정될 때만 한다
+- 실측 (TTS, 실제 서버 경로): 문서 문장 정확히 맞음 31% → **79%**, 문서 밖 말을 문서로 잘못 바꾼 것 0/47
+- 문서 밖 말(예: "화장실에 가고 싶어요")은 바뀌지 않는다. 다만 힌트가 걸려 있어서 문서 밖 말은 조금 덜 정확해진다 (CER 0.23 → 0.26). **읽기 화면에서만** `reference`를 보낸다
+- 자유 대화 화면에서 자주 쓰는 단어만 있으면 `hints`만 보낸다 (문서 맞추기는 하지 않는다)
+- 검증 결과는 `serve/README.md` "읽기 문서"
 
 ## 모드
 
